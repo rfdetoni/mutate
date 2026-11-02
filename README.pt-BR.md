@@ -26,7 +26,7 @@ O M.U.T.A.T.E. inspeciona cabeçalhos ELF, resolve dependências reversas por bi
   - **Debian / Ubuntu / Mint:** Leitura direta e ultrarrápida em Go de `/var/lib/dpkg/info/*.list` + fallback para `dpkg -S`.
   - **Arch Linux / Manjaro:** Consulta aos metadados de `/var/lib/pacman/local/*/files` + fallback para `pacman -F`.
   - **Fedora / RHEL / CentOS:** Consulta local de bibliotecas em `/usr/lib64` + `rpm -qf` / `dnf provides`.
-- **Isolamento Automático de Bibliotecas (Bundler):** Quando uma biblioteca `.so` não existe no sistema hospedeiro ou possui incompatibilidade de versão, o M.U.T.A.T.E. isola a `.so` em `/usr/lib/<app>/lib` e gera um script wrapper seguro que ajusta o `LD_LIBRARY_PATH`. Se o binário exigir `musl` em host `glibc`, injeta o loader musl e a dependência correspondente.
+- **Isolamento explícito de bibliotecas:** Recebe bibliotecas ELF via `--library-dir`, verifica seu formato e SONAME e cria wrappers quando necessário. Não baixa bibliotecas automaticamente nem garante compatibilidade ABI.
 - **Normalização FHS:** Converte layouts de diretórios entre distribuições (ex: `/usr/lib64` <-> `/usr/lib/x86_64-linux-gnu` <-> `/usr/lib`) e atualiza automaticamente caminhos hardcoded em arquivos `.desktop`, `.service` e `.pc`.
 - **Transpilação de Scripts via AST:** Parseia scripts de instalação (`preinst`, `postinst`, `prerm`, `postrm`) em Árvore de Sintaxe Abstrata (AST) com `mvdan.cc/sh/v3/syntax`. Converte comandos legados de serviço (`chkconfig`, `service`) para `systemctl`, adapta flags do `useradd` e remove chamadas redundantes a `ldconfig`.
 - **Ponte para APKs Android:** Extrai APKs do Android, decodifica o `AndroidManifest.xml` binário (AXML) e cria launchers nativos integrados ao Waydroid / ATL com entradas `.desktop` e ícones.
@@ -144,10 +144,10 @@ Distribuído sob a licença GPL-3.0. Consulte o arquivo [LICENSE](LICENSE) para 
 ## Segurança e limitações atuais
 
 - `inspect` não executa código-fonte nem scripts.
-- A compilação de tarballs requer `--allow-source-build` e **não é isolada por sandbox**. Execute apenas fontes confiáveis.
+- A compilação de tarballs requer `--allow-source-build`, Bubblewrap e user namespaces; a execução ocorre em sandbox sem rede, sem fallback para o host.
 - Bibliotecas ELF ausentes exigem arquivos fornecidos pelo usuário em `--library-dir /caminho/libs`; bibliotecas sem formato ELF, SONAME ou arquitetura compatível são rejeitadas.
 - Dependências entre distribuições e scripts de instalação sem conversão segura são rejeitados; o sistema não gera deliberadamente pacotes com dependências falsas.
-- AppImage é identificado, mas ainda não pode ser convertido. ZIP genérico também não é aceito como tarball.
+- AppImage tipo 2 pode ser convertido via `unsquashfs`; AppImage tipo 1 e ZIP genérico não são suportados.
 - `install --dry-run` informa o plano, sem compilar nem instalar.
 - Use Go 1.26.4 ou posterior, de acordo com o `go.mod`.
 
