@@ -16,6 +16,8 @@ import (
  "github.com/rfdetoni/mutate/internal/domain"
 )
 
+const maxArchiveEntries = 1000000
+
 type AppImageUnpacker struct{}
 func NewAppImageUnpacker()*AppImageUnpacker{return &AppImageUnpacker{}}
 
