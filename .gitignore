@@ -7,6 +7,9 @@
 *.dll
 *.so
 *.dylib
+/mutate
+/mut
+/bin/
 
 # Test binary, built with `go test -c`
 *.test
