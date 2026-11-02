@@ -48,5 +48,5 @@ exit 2
  if _,ok:=ir.Files["/opt/example/usr/bin/example"];!ok{t.Fatal("missing extracted file")}
  wrapper,err:=os.ReadFile(filepath.Join(stage,"usr/bin/example"))
  if err!=nil{t.Fatal(err)}
- if !strings.Contains(string(wrapper),"/opt/example/AppRun"){t.Fatalf("invalid wrapper: %s",wrapper)}
+ if !strings.Contains(string(wrapper),"APPDIR='/opt/example'") || !strings.Contains(string(wrapper),"exec \"$APPDIR/AppRun\""){t.Fatalf("invalid wrapper: %s",wrapper)}
 }
