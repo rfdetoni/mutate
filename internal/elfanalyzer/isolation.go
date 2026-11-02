@@ -9,12 +9,12 @@ import (
 
 // WrapperOptions configures runtime library isolation wrapper script.
 type WrapperOptions struct {
-	AppName       string
-	OriginalBin   string   // e.g., /usr/lib/<app>/bin/real-binary
-	IsolatedLibDir string  // e.g., /usr/lib/<app>/lib
-	CustomEnv     []string // extra environment variables
-	UseMuslLoader bool
-	MuslLoaderPath string  // e.g., /lib/ld-musl-x86_64.so.1
+	AppName        string
+	OriginalBin    string   // e.g., /usr/lib/<app>/bin/real-binary
+	IsolatedLibDir string   // e.g., /usr/lib/<app>/lib
+	CustomEnv      []string // extra environment variables
+	UseMuslLoader  bool
+	MuslLoaderPath string // e.g., /lib/ld-musl-x86_64.so.1
 }
 
 // GenerateWrapperScriptContent returns shell script that sets LD_LIBRARY_PATH before invoking the real binary.

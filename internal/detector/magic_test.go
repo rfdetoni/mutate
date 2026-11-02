@@ -150,10 +150,7 @@ func TestDetectAndroidVsGenericZip(t *testing.T) {
 
 	rZip := bytes.NewReader(bufZip.Bytes())
 	fmtZip, err := DetectReader(rZip, int64(bufZip.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fmtZip != domain.FormatTarball {
-		t.Fatalf("expected %v, got %v", domain.FormatTarball, fmtZip)
+	if err == nil || fmtZip != domain.FormatUnknown {
+		t.Fatalf("generic ZIP must be rejected (got %v, %v)", fmtZip, err)
 	}
 }

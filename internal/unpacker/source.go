@@ -4,8 +4,8 @@ import (
 	"archive/tar"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/rfdetoni/mutate/internal/domain"
@@ -87,99 +87,77 @@ func (u *SourceUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pack
 		Name:         pkgName,
 		Version:      "1.0.0",
 		Release:      "1",
-		Architecture: "amd64",
+		Architecture: runtime.GOARCH,
 		Description:  fmt.Sprintf("Compiled package from source (%s)", buildSys),
 		License:      "Unknown",
 	}
 
-	destDir := stagingDir
-	if err := u.CompileAndInstall(workDir, destDir, buildSys, pkgName); err != nil {
-		return nil, fmt.Errorf("compile source: %w", err)
-	}
-
-	// Index generated files in staging directory
-	if err := indexStagingFiles(stagingDir, ir); err != nil {
-		return nil, fmt.Errorf("index compiled files: %w", err)
-	}
-
-	// Clean temporary build directory
-	os.RemoveAll(srcBuildDir)
-
+	// Parsing and inspection never compile or execute untrusted source code.
 	return ir, nil
 }
 
+// BuildSource requires explicit permission from the CLI. Source builds require bubblewrap isolation; inspect/dry-run never compile.
+func (u *SourceUnpacker) BuildSource(ir *domain.PackageIR) error {
+	srcDir := filepath.Join(ir.StagingDir, ".src_build")
+	workDir := findRootWorkDir(srcDir)
+	sys := u.DetectBuildSystem(workDir)
+	if sys == BuildSystemUnknown {
+		return fmt.Errorf("unsupported source build system")
+	}
+	if err := u.CompileAndInstall(workDir, ir.StagingDir, sys, ir.Metadata.Name); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(srcDir); err != nil {
+		return err
+	}
+	return indexStagingFiles(ir.StagingDir, ir)
+}
+
 func (u *SourceUnpacker) CompileAndInstall(workDir, destDir string, buildSys BuildSystem, pkgName string) error {
-	prefix := "/usr"
 	usrBin := filepath.Join(destDir, "usr/bin")
 	if err := os.MkdirAll(usrBin, 0755); err != nil {
 		return err
 	}
-
+	run := func(args ...string) error { return runIsolatedBuild(workDir, destDir, args...) }
 	switch buildSys {
 	case BuildSystemGo:
-		outBin := filepath.Join(usrBin, pkgName)
-		cmd := exec.Command("go", "build", "-o", outBin, ".")
-		cmd.Dir = workDir
-		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("go build failed: %s: %w", string(out), err)
-		}
-
+		return run("go", "build", "-o", filepath.Join(usrBin, pkgName), ".")
 	case BuildSystemCargo:
-		cmd := exec.Command("cargo", "install", "--path", ".", "--root", filepath.Join(destDir, "usr"))
-		cmd.Dir = workDir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("cargo install failed: %s: %w", string(out), err)
-		}
-
+		return run("cargo", "install", "--offline", "--path", ".", "--root", filepath.Join(destDir, "usr"))
 	case BuildSystemCMake:
 		buildDir := filepath.Join(workDir, "build")
-		cmd1 := exec.Command("cmake", "-B", buildDir, "-DCMAKE_INSTALL_PREFIX="+prefix)
-		cmd1.Dir = workDir
-		if out, err := cmd1.CombinedOutput(); err != nil {
-			return fmt.Errorf("cmake configure failed: %s: %w", string(out), err)
+		if err := run("cmake", "-B", buildDir, "-DCMAKE_INSTALL_PREFIX=/usr"); err != nil {
+			return err
 		}
-		cmd2 := exec.Command("cmake", "--build", buildDir)
-		cmd2.Dir = workDir
-		if out, err := cmd2.CombinedOutput(); err != nil {
-			return fmt.Errorf("cmake build failed: %s: %w", string(out), err)
+		if err := run("cmake", "--build", buildDir); err != nil {
+			return err
 		}
-		cmd3 := exec.Command("cmake", "--install", buildDir, "--prefix", filepath.Join(destDir, "usr"))
-		cmd3.Dir = workDir
-		if out, err := cmd3.CombinedOutput(); err != nil {
-			return fmt.Errorf("cmake install failed: %s: %w", string(out), err)
+		return run("cmake", "--install", buildDir, "--prefix", filepath.Join(destDir, "usr"))
+	case BuildSystemMeson:
+		buildDir := filepath.Join(workDir, "build")
+		if err := run("meson", "setup", buildDir, "--prefix=/usr"); err != nil {
+			return err
 		}
-
+		if err := run("meson", "compile", "-C", buildDir); err != nil {
+			return err
+		}
+		return run("meson", "install", "-C", buildDir)
+	case BuildSystemAutotools:
+		if err := run("./configure", "--prefix=/usr"); err != nil {
+			return err
+		}
+		if err := run("make"); err != nil {
+			return err
+		}
+		return run("make", "install", "DESTDIR="+destDir)
 	case BuildSystemMake:
-		cmd1 := exec.Command("make")
-		cmd1.Dir = workDir
-		if out, err := cmd1.CombinedOutput(); err != nil {
-			return fmt.Errorf("make failed: %s: %w", string(out), err)
+		if err := run("make"); err != nil {
+			return err
 		}
-		cmd2 := exec.Command("make", "install", "DESTDIR="+destDir, "PREFIX="+prefix)
-		cmd2.Dir = workDir
-		if out, err := cmd2.CombinedOutput(); err != nil {
-			return fmt.Errorf("make install failed: %s: %w", string(out), err)
-		}
-
+		return run("make", "install", "DESTDIR="+destDir, "PREFIX=/usr")
 	default:
-		// Unknown or script tarball: check if any executable scripts exist, copy to usr/bin
-		entries, err := os.ReadDir(workDir)
-		if err == nil {
-			for _, e := range entries {
-				if !e.IsDir() {
-					fi, _ := e.Info()
-					if fi != nil && (fi.Mode()&0111 != 0) {
-						srcP := filepath.Join(workDir, e.Name())
-						dstP := filepath.Join(usrBin, e.Name())
-						copyFile(srcP, dstP)
-					}
-				}
-			}
-		}
+		return fmt.Errorf("unsupported source build system %q", buildSys)
 	}
-
-	return nil
 }
 
 func findRootWorkDir(srcBuildDir string) string {
@@ -208,8 +186,11 @@ func indexStagingFiles(stagingDir string, ir *domain.PackageIR) error {
 		if err != nil {
 			return err
 		}
-		if path == stagingDir || strings.HasPrefix(path, filepath.Join(stagingDir, ".src_build")) {
+		if path == stagingDir {
 			return nil
+		}
+		if path == filepath.Join(stagingDir, ".src_build") {
+			return filepath.SkipDir
 		}
 
 		rel, err := filepath.Rel(stagingDir, path)

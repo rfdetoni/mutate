@@ -67,48 +67,11 @@ func TestArchResolverSearch(t *testing.T) {
 	}
 }
 
-func TestBundler(t *testing.T) {
-	stagingDir, err := os.MkdirTemp("", "staging-bundler-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(stagingDir)
-
-	binDir := filepath.Join(stagingDir, "usr/bin")
-	if err := os.MkdirAll(binDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	binFile := filepath.Join(binDir, "myapp")
-	if err := os.WriteFile(binFile, []byte("#!/bin/sh\necho real-app"), 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	ir := domain.NewPackageIR(stagingDir, domain.FormatRPM)
-	ir.Files["/usr/bin/myapp"] = domain.FileEntry{
-		SourcePath:      binFile,
-		DestinationPath: "/usr/bin/myapp",
-		Mode:            0755,
-	}
-
-	bundler := NewLibraryBundler("myapp")
-	err = bundler.BundleMissingLibraries(ir, []string{"libold.so.1"}, DistroDebian)
-	if err != nil {
-		t.Fatalf("bundle error: %v", err)
-	}
-
-	// Verify wrapper exists at /usr/bin/myapp
-	wrapperData, err := os.ReadFile(binFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytesContains(wrapperData, "LD_LIBRARY_PATH") {
-		t.Fatal("expected wrapper script at /usr/bin/myapp to contain LD_LIBRARY_PATH")
-	}
-
-	// Verify real binary moved to /usr/lib/myapp/bin/myapp
-	realBin := filepath.Join(stagingDir, "usr/lib/myapp/bin/myapp")
-	if _, err := os.Stat(realBin); err != nil {
-		t.Fatalf("expected real binary at %s: %v", realBin, err)
+func TestBundlerRejectsMissingLibraries(t *testing.T) {
+	stage := t.TempDir()
+	ir := domain.NewPackageIR(stage, domain.FormatRPM)
+	if err := NewLibraryBundler("test").BundleMissingLibraries(ir, []string{"libold.so.1"}, DistroDebian); err == nil {
+		t.Fatal("must not claim success without an actual library source")
 	}
 }
 

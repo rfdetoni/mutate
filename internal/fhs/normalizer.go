@@ -62,24 +62,30 @@ func NormalizePackage(ir *domain.PackageIR, targetDistro resolver.Distro) error 
 
 		if newDest != destPath {
 			pathReplacements[destPath] = newDest
-			// If moving from /usr/lib64 to another lib dir, record directory replacement
 			if strings.HasPrefix(destPath, "/usr/lib64/") {
 				pathReplacements["/usr/lib64/"] = targetFHS.PrimaryLibDir + "/"
-			} else if strings.HasPrefix(destPath, "/usr/lib/x86_64-linux-gnu/") {
+			}
+			if strings.HasPrefix(destPath, "/usr/lib/x86_64-linux-gnu/") {
 				pathReplacements["/usr/lib/x86_64-linux-gnu/"] = targetFHS.PrimaryLibDir + "/"
 			}
-			// If file is on disk in staging, relocate it
-			if ir.StagingDir != "" && entry.SourcePath != "" {
-				newDiskPath := filepath.Join(ir.StagingDir, strings.TrimPrefix(newDest, "/"))
-				if err := os.MkdirAll(filepath.Dir(newDiskPath), 0755); err == nil {
-					if err := os.Rename(entry.SourcePath, newDiskPath); err == nil {
-						entry.SourcePath = newDiskPath
-					}
+			if strings.HasPrefix(destPath, "/usr/lib/aarch64-linux-gnu/") {
+				pathReplacements["/usr/lib/aarch64-linux-gnu/"] = targetFHS.PrimaryLibDir + "/"
+			}
+			if !entry.IsSymlink && !entry.IsDir && ir.StagingDir != "" && entry.SourcePath != "" {
+				destDisk := filepath.Join(ir.StagingDir, strings.TrimPrefix(newDest, "/"))
+				if err := os.MkdirAll(filepath.Dir(destDisk), 0755); err != nil {
+					return fmt.Errorf("relocate %s: %w", destPath, err)
 				}
+				if err := os.Rename(entry.SourcePath, destDisk); err != nil {
+					return fmt.Errorf("relocate %s to %s: %w", destPath, newDest, err)
+				}
+				entry.SourcePath = destDisk
 			}
 			entry.DestinationPath = newDest
 		}
-
+		if _, exists := newFiles[newDest]; exists {
+			return fmt.Errorf("FHS normalization collision at %s", newDest)
+		}
 		newFiles[newDest] = entry
 	}
 	ir.Files = newFiles
@@ -127,7 +133,11 @@ func updateConfigFilePaths(diskPath string, replacements map[string]string) erro
 	}
 
 	if modified {
-		return os.WriteFile(diskPath, data, 0644)
+		st, err := os.Stat(diskPath)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(diskPath, data, st.Mode().Perm())
 	}
 	return nil
 }

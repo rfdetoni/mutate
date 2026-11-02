@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/rfdetoni/mutate/internal/domain"
+	"github.com/rfdetoni/mutate/internal/scripts"
 )
 
 type ArchUnpacker struct{}
@@ -71,63 +72,24 @@ func (u *ArchUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Packag
 			if err != nil {
 				return nil, fmt.Errorf("read .INSTALL: %w", err)
 			}
-			parseArchInstallScript(string(data), &ir.Scripts)
+			if err := parseArchInstallScript(string(data), &ir.Scripts); err != nil {
+				return nil, fmt.Errorf("parse .INSTALL: %w", err)
+			}
 			continue
 
 		case ".MTREE", ".BUILDINFO":
 			// Ignore packaging metadata
 			continue
 		}
-
-		if strings.HasPrefix(cleanName, "../") || cleanName == ".." {
-			return nil, fmt.Errorf("path traversal attempt in arch package: %s", hdr.Name)
+		if hdr.Typeflag == tar.TypeDir && (cleanName == "." || cleanName == "/") {
+			continue
 		}
-
-		destOnDisk := filepath.Join(stagingDir, cleanName)
-		destInHost := "/" + cleanName
-
-		fileInfo := hdr.FileInfo()
-		entry := domain.FileEntry{
-			SourcePath:      destOnDisk,
-			DestinationPath: destInHost,
-			Mode:            fileInfo.Mode(),
-			ModTime:         hdr.ModTime,
-			Owner:           hdr.Uname,
-			Group:           hdr.Gname,
+		if hdr.Size > maxEntryBytes {
+			return nil, fmt.Errorf("archive entry too large: %q", hdr.Name)
 		}
-
-		switch hdr.Typeflag {
-		case tar.TypeDir:
-			entry.IsDir = true
-			if err := os.MkdirAll(destOnDisk, 0755); err != nil {
-				return nil, fmt.Errorf("mkdir %s: %w", destOnDisk, err)
-			}
-		case tar.TypeSymlink:
-			entry.IsSymlink = true
-			entry.SymlinkTarget = hdr.Linkname
-			if err := os.MkdirAll(filepath.Dir(destOnDisk), 0755); err != nil {
-				return nil, err
-			}
-			os.Remove(destOnDisk)
-			if err := os.Symlink(hdr.Linkname, destOnDisk); err != nil {
-				return nil, fmt.Errorf("symlink %s -> %s: %w", destOnDisk, hdr.Linkname, err)
-			}
-		case tar.TypeReg, tar.TypeRegA:
-			if err := os.MkdirAll(filepath.Dir(destOnDisk), 0755); err != nil {
-				return nil, err
-			}
-			outFile, err := os.OpenFile(destOnDisk, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fileInfo.Mode().Perm())
-			if err != nil {
-				return nil, fmt.Errorf("create file %s: %w", destOnDisk, err)
-			}
-			if _, err := io.Copy(outFile, tr); err != nil {
-				outFile.Close()
-				return nil, fmt.Errorf("write file %s: %w", destOnDisk, err)
-			}
-			outFile.Close()
+		if err := extractArchiveEntry(stagingDir, ir, hdr.Name, hdr.Typeflag, hdr.Linkname, hdr.FileInfo().Mode(), hdr.ModTime, hdr.Uname, hdr.Gname, tr); err != nil {
+			return nil, fmt.Errorf("extract %q: %w", hdr.Name, err)
 		}
-
-		ir.Files[destInHost] = entry
 	}
 
 	return ir, nil
@@ -174,15 +136,11 @@ func parseArchPkgInfo(data []byte, meta *domain.Metadata) {
 	}
 }
 
-func parseArchInstallScript(script string, scripts *domain.Scripts) {
-	// Simple mapping of arch install functions to lifecycle scripts
-	if strings.Contains(script, "post_install") {
-		scripts.PostInstall = script
+func parseArchInstallScript(raw string, result *domain.Scripts) error {
+	hooks, err := scripts.ExtractArchInstall(raw)
+	if err != nil {
+		return err
 	}
-	if strings.Contains(script, "pre_remove") {
-		scripts.PreRemove = script
-	}
-	if strings.Contains(script, "post_remove") {
-		scripts.PostRemove = script
-	}
+	*result = hooks
+	return nil
 }

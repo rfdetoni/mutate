@@ -3,7 +3,6 @@ package unpacker
 import (
 	"archive/tar"
 	"compress/gzip"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -49,89 +48,27 @@ func ExtractTarStream(tr *tar.Reader, targetDir string, ir *domain.PackageIR) er
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
-			break
+			return nil
 		}
 		if err != nil {
 			return fmt.Errorf("read tar entry: %w", err)
 		}
-
-		// Security: clean and verify path does not escape targetDir
-		cleanName := filepath.Clean(hdr.Name)
-		if strings.HasPrefix(cleanName, "/") {
-			cleanName = strings.TrimPrefix(cleanName, "/")
-		}
-		if strings.HasPrefix(cleanName, "../") || cleanName == ".." {
-			return fmt.Errorf("path traversal attempt in archive: %s", hdr.Name)
-		}
-
-		destOnDisk := filepath.Join(targetDir, cleanName)
-		destInHost := "/" + cleanName
-
-		fileInfo := hdr.FileInfo()
-		entry := domain.FileEntry{
-			SourcePath:      destOnDisk,
-			DestinationPath: destInHost,
-			Mode:            fileInfo.Mode(),
-			ModTime:         hdr.ModTime,
-			Owner:           hdr.Uname,
-			Group:           hdr.Gname,
-		}
-
-		switch hdr.Typeflag {
-		case tar.TypeDir:
-			entry.IsDir = true
-			if err := os.MkdirAll(destOnDisk, 0755); err != nil {
-				return fmt.Errorf("mkdir %s: %w", destOnDisk, err)
-			}
-
-		case tar.TypeSymlink:
-			entry.IsSymlink = true
-			entry.SymlinkTarget = hdr.Linkname
-			if err := os.MkdirAll(filepath.Dir(destOnDisk), 0755); err != nil {
-				return err
-			}
-			os.Remove(destOnDisk)
-			if err := os.Symlink(hdr.Linkname, destOnDisk); err != nil {
-				return fmt.Errorf("symlink %s -> %s: %w", destOnDisk, hdr.Linkname, err)
-			}
-
-		case tar.TypeReg, tar.TypeRegA:
-			if err := os.MkdirAll(filepath.Dir(destOnDisk), 0755); err != nil {
-				return err
-			}
-			outFile, err := os.OpenFile(destOnDisk, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fileInfo.Mode().Perm())
-			if err != nil {
-				return fmt.Errorf("create file %s: %w", destOnDisk, err)
-			}
-			if _, err := io.Copy(outFile, tr); err != nil {
-				outFile.Close()
-				return fmt.Errorf("write file %s: %w", destOnDisk, err)
-			}
-			outFile.Close()
-
-		default:
-			// Ignore unsupported special entries
+		if hdr.Typeflag == tar.TypeDir && (filepath.Clean(hdr.Name) == "." || filepath.Clean(hdr.Name) == "/") {
 			continue
 		}
-
-		if ir != nil {
-			ir.Files[destInHost] = entry
+		if hdr.Size > maxEntryBytes {
+			return fmt.Errorf("archive entry too large: %q", hdr.Name)
+		}
+		if err := extractArchiveEntry(targetDir, ir, hdr.Name, hdr.Typeflag, hdr.Linkname, hdr.FileInfo().Mode(), hdr.ModTime, hdr.Uname, hdr.Gname, tr); err != nil {
+			return fmt.Errorf("extract %q: %w", hdr.Name, err)
 		}
 	}
-
-	return nil
 }
 
 // SanitizeStagingPath safely computes staging destination without path traversal.
 func SanitizeStagingPath(baseDir, relativePath string) (string, error) {
-	clean := filepath.Clean(relativePath)
-	if strings.HasPrefix(clean, "/") {
-		clean = strings.TrimPrefix(clean, "/")
-	}
-	if strings.HasPrefix(clean, "../") || clean == ".." {
-		return "", errors.New("path escapes staging root")
-	}
-	return filepath.Join(baseDir, clean), nil
+	dest, _, err := archiveDestination(baseDir, relativePath, nil)
+	return dest, err
 }
 
 func copyFile(src, dst string) error {
@@ -161,4 +98,3 @@ func defaultString(s, def string) string {
 	}
 	return s
 }
-

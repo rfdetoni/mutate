@@ -22,11 +22,11 @@ M.U.T.A.T.E. inspects ELF binaries, resolves missing shared libraries (`.so`) di
 
 - **Zero CGO (`CGO_ENABLED=0`):** Completely static, self-contained binary with zero external runtime dependencies.
 - **Deep ELF Inspection:** Parses ELF headers using `debug/elf` to extract dynamic interpreter (`ld-linux` glibc vs `ld-musl`), architectures (`x86_64`, `aarch64`), `DT_NEEDED` libraries, `RPATH`, and `RUNPATH`.
-- **Host Reverse Dependency Resolution:**
+- **Host Native Dependency Resolution:**
   - **Debian / Ubuntu / Mint:** High-speed in-memory filesystem scanning of `/var/lib/dpkg/info/*.list` + fallback to `dpkg -S`.
   - **Arch Linux / Manjaro:** Local database lookups in `/var/lib/pacman/local/*/files` + fallback to `pacman -F`.
   - **Fedora / RHEL / CentOS:** Local RPM database inspection via `/usr/lib64` + `rpm -qf` / `dnf provides`.
-- **Automatic Library Isolation & Bundling:** Automatically isolates incompatible or missing host libraries into `/usr/lib/<app>/lib` and creates transparent execution wrappers. Adds `musl` loader support on `glibc` hosts when required.
+- **Explicit Library Isolation & Bundling:** Validates explicitly supplied ELF libraries via `--library-dir` and bundles them with execution wrappers. Missing libraries are never downloaded automatically; ABI mismatches must be handled separately.
 - **FHS Directory Normalization:** Seamlessly bridges path discrepancies between distributions (e.g. `/usr/lib64` <-> `/usr/lib/x86_64-linux-gnu` <-> `/usr/lib`) and patches `.desktop`, `.service`, and `.pc` files.
 - **AST Shell Script Transpilation:** Parses maintainer scripts (`preinst`, `postinst`, `prerm`, `postrm`) into Abstract Syntax Trees with `mvdan.cc/sh/v3/syntax`. Converts legacy service managers (`chkconfig`, `service`) to `systemctl`, adapts distro-specific `useradd` flags, and cleans redundant `ldconfig` invocations.
 - **Android APK Bridging:** Extracts Android APKs, parses binary XML (`AndroidManifest.xml`), and creates native desktop entries and Waydroid / ATL execution launchers.
@@ -43,8 +43,8 @@ M.U.T.A.T.E. inspects ELF binaries, resolves missing shared libraries (`.so`) di
 | **Arch Linux** | `.pkg.tar.zst` | ✅ | ✅ |
 | **Alpine Linux** | `.apk` | ✅ | ✅ |
 | **Android APK** | `.apk` (with `AndroidManifest.xml`) | ✅ | ➔ Waydroid launcher |
-| **Source Tarball** | `.tar.gz`, `.tar.xz`, `.tar.zst` | ✅ | ➔ Native package |
-| **AppImage** | `.AppImage` (Type 2 ELF) | ✅ | ➔ Native package |
+| **Source Tarball** | `.tar.gz`, `.tar.xz`, `.tar.zst` | ✅ | Opt-in build (`--allow-source-build`) |
+| **AppImage** | `.AppImage` (Type 2 ELF) | ✅ via `unsquashfs` | ✅ wrapper + AppDir |
 
 ---
 
@@ -57,7 +57,7 @@ cd mutate
 ./install.sh
 ```
 
-### From Source (Go 1.24+)
+### From Source (Go 1.26.4+)
 ```bash
 git clone https://github.com/rfdetoni/mutate.git
 cd mutate
@@ -93,6 +93,15 @@ mut build package.deb --to rpm
 # Convert Android APK to native Debian package
 mut build app.apk --to deb
 ```
+
+### Conversion safety and current limitations
+
+- **Inspect does not execute source code.** Source compilation is never implicit.
+- Source builds require `--allow-source-build`, Bubblewrap and user namespaces; compilation runs inside an offline sandbox. Use trusted sources and dependencies.
+- Missing shared objects fail with a clear error unless explicitly supplied via `--library-dir /path/to/libs`. Supplied libraries must be valid ELF files with matching SONAME and architecture.
+- Cross-distribution conversions involving untranslated package dependencies or lifecycle scripts **fail closed** rather than silently emitting an incorrect package. To resolve target packages, run on the target distribution; same-format repackaging can preserve existing dependency metadata.
+- Alpine package handling does not imply glibc/musl binary compatibility. Generic ZIPs and type-1 AppImages cannot currently be converted.
+- `install --dry-run` prints the intended operation and does not build, compile, or install. It is a plan, not a compatibility guarantee.
 
 ### 3. Direct Installation on Host
 Transpiles the package to the current host machine's native format and installs it using the host package manager (`apt`, `dnf`, `pacman`, or `apk`):
@@ -139,3 +148,21 @@ go test -v ./...
 ## License
 
 This project is licensed under the GPL-3.0 License. See [LICENSE](LICENSE) for details.
+
+### AppImage type 2 conversion
+
+`mutate build program.AppImage --to deb -o program.deb` uses the optional `unsquashfs` command from `squashfs-tools`. It extracts a SquashFS v4 payload *without executing the AppImage runtime*, installs the AppDir under `/opt/<name>`, and creates a launcher for `AppRun`. Type 1 AppImage is not supported. Always test runtime compatibility on the target distribution.
+
+### Sandboxed source builds
+
+`mutate build project.tar.gz --to deb --allow-source-build` requires Linux Bubblewrap (`bwrap`) with user namespaces. Build tools execute in a mount, process and network namespace with only the staging tree writable. No fallback to unsandboxed builds is allowed. Offline dependencies must be vendored or available in the sandbox.
+
+### Cross-distribution dependency mapping
+
+Provide a verified JSON map with `--dependency-map deps.json` when source and destination formats differ, and for shared libraries not resolvable on the target host. Dynamic library keys start with `so:`:
+
+```json
+{"libc6": "glibc", "so:libc.so.6": "glibc", "so:libssl.so.3": "openssl-libs"}
+```
+
+Cross-format lifecycle scripts are transformed only when their POSIX syntax can be conservatively translated. Arch installation functions are split into lifecycle stages; unsupported upgrade hooks and source-specific package-manager commands are rejected rather than silently changed. Mapping package names does not prove ABI/runtime compatibility.
