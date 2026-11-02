@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
- "path/filepath"
- "runtime"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/rfdetoni/mutate/internal/domain"
@@ -93,20 +93,26 @@ func (u *SourceUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pack
 		License:      "Unknown",
 	}
 
- // Parsing and inspection never compile or execute untrusted source code.
- return ir,nil
+	// Parsing and inspection never compile or execute untrusted source code.
+	return ir, nil
 }
 
 // BuildSource requires explicit permission from the CLI. Source build scripts
 // execute on the host; callers must not invoke this for inspect or dry-run.
 func (u *SourceUnpacker) BuildSource(ir *domain.PackageIR) error {
- srcDir:=filepath.Join(ir.StagingDir,".src_build")
- workDir:=findRootWorkDir(srcDir)
- sys:=u.DetectBuildSystem(workDir)
- if sys==BuildSystemUnknown{return fmt.Errorf("unsupported source build system")}
- if err:=u.CompileAndInstall(workDir,ir.StagingDir,sys,ir.Metadata.Name);err!=nil{return err}
- if err:=os.RemoveAll(srcDir);err!=nil{return err}
- return indexStagingFiles(ir.StagingDir,ir)
+	srcDir := filepath.Join(ir.StagingDir, ".src_build")
+	workDir := findRootWorkDir(srcDir)
+	sys := u.DetectBuildSystem(workDir)
+	if sys == BuildSystemUnknown {
+		return fmt.Errorf("unsupported source build system")
+	}
+	if err := u.CompileAndInstall(workDir, ir.StagingDir, sys, ir.Metadata.Name); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(srcDir); err != nil {
+		return err
+	}
+	return indexStagingFiles(ir.StagingDir, ir)
 }
 
 func (u *SourceUnpacker) CompileAndInstall(workDir, destDir string, buildSys BuildSystem, pkgName string) error {
@@ -151,22 +157,26 @@ func (u *SourceUnpacker) CompileAndInstall(workDir, destDir string, buildSys Bui
 			return fmt.Errorf("cmake install failed: %s: %w", string(out), err)
 		}
 
- case BuildSystemMeson:
-  buildDir:=filepath.Join(workDir,"build")
-  cmds:=[][]string{{"meson","setup",buildDir,"--prefix=/usr"},{"meson","compile","-C",buildDir},{"meson","install","-C",buildDir}}
-  for _,argv:=range cmds {
-   cmd:=exec.Command(argv[0],argv[1:]...)
-   cmd.Dir=workDir
-   cmd.Env=append(os.Environ(),"DESTDIR="+destDir)
-   if out,err:=cmd.CombinedOutput();err!=nil{return fmt.Errorf("%s failed: %s: %w",argv[0],out,err)}
-  }
- case BuildSystemAutotools:
-  cmds:=[][]string{{"./configure","--prefix=/usr"},{"make"},{"make","install","DESTDIR="+destDir}}
-  for _,argv:=range cmds {
-   cmd:=exec.Command(argv[0],argv[1:]...)
-   cmd.Dir=workDir
-   if out,err:=cmd.CombinedOutput();err!=nil{return fmt.Errorf("%s failed: %s: %w",argv[0],out,err)}
-  }
+	case BuildSystemMeson:
+		buildDir := filepath.Join(workDir, "build")
+		cmds := [][]string{{"meson", "setup", buildDir, "--prefix=/usr"}, {"meson", "compile", "-C", buildDir}, {"meson", "install", "-C", buildDir}}
+		for _, argv := range cmds {
+			cmd := exec.Command(argv[0], argv[1:]...)
+			cmd.Dir = workDir
+			cmd.Env = append(os.Environ(), "DESTDIR="+destDir)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("%s failed: %s: %w", argv[0], out, err)
+			}
+		}
+	case BuildSystemAutotools:
+		cmds := [][]string{{"./configure", "--prefix=/usr"}, {"make"}, {"make", "install", "DESTDIR=" + destDir}}
+		for _, argv := range cmds {
+			cmd := exec.Command(argv[0], argv[1:]...)
+			cmd.Dir = workDir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("%s failed: %s: %w", argv[0], out, err)
+			}
+		}
 
 	case BuildSystemMake:
 		cmd1 := exec.Command("make")
@@ -225,9 +235,13 @@ func indexStagingFiles(stagingDir string, ir *domain.PackageIR) error {
 	return filepath.Walk(stagingDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
-		} 
-  if path==stagingDir{return nil}
-  if path==filepath.Join(stagingDir,".src_build"){return filepath.SkipDir}
+		}
+		if path == stagingDir {
+			return nil
+		}
+		if path == filepath.Join(stagingDir, ".src_build") {
+			return filepath.SkipDir
+		}
 
 		rel, err := filepath.Rel(stagingDir, path)
 		if err != nil {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
- "sort"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/goreleaser/nfpm/v2"
@@ -52,44 +52,54 @@ func BuildPackage(ir *domain.PackageIR, targetFormat string, out io.Writer) erro
 
 	if ir.Scripts.PreInstall != "" {
 		p := filepath.Join(scriptDir, "preinstall.sh")
-		if err := os.WriteFile(p, []byte(ir.Scripts.PreInstall), 0755); err != nil {return fmt.Errorf("write PreInstall: %w",err)}
-   info.Scripts.PreInstall=p
+		if err := os.WriteFile(p, []byte(ir.Scripts.PreInstall), 0755); err != nil {
+			return fmt.Errorf("write PreInstall: %w", err)
+		}
+		info.Scripts.PreInstall = p
 	}
 	if ir.Scripts.PostInstall != "" {
 		p := filepath.Join(scriptDir, "postinstall.sh")
-		if err := os.WriteFile(p, []byte(ir.Scripts.PostInstall), 0755); err != nil {return fmt.Errorf("write PostInstall: %w",err)}
-   info.Scripts.PostInstall=p
+		if err := os.WriteFile(p, []byte(ir.Scripts.PostInstall), 0755); err != nil {
+			return fmt.Errorf("write PostInstall: %w", err)
+		}
+		info.Scripts.PostInstall = p
 	}
 	if ir.Scripts.PreRemove != "" {
 		p := filepath.Join(scriptDir, "preremove.sh")
-		if err := os.WriteFile(p, []byte(ir.Scripts.PreRemove), 0755); err != nil {return fmt.Errorf("write PreRemove: %w",err)}
-   info.Scripts.PreRemove=p
+		if err := os.WriteFile(p, []byte(ir.Scripts.PreRemove), 0755); err != nil {
+			return fmt.Errorf("write PreRemove: %w", err)
+		}
+		info.Scripts.PreRemove = p
 	}
 	if ir.Scripts.PostRemove != "" {
 		p := filepath.Join(scriptDir, "postremove.sh")
-		if err := os.WriteFile(p, []byte(ir.Scripts.PostRemove), 0755); err != nil {return fmt.Errorf("write PostRemove: %w",err)}
-   info.Scripts.PostRemove=p
+		if err := os.WriteFile(p, []byte(ir.Scripts.PostRemove), 0755); err != nil {
+			return fmt.Errorf("write PostRemove: %w", err)
+		}
+		info.Scripts.PostRemove = p
 	}
 
 	// Setup files content
-	keys:=make([]string,0,len(ir.Files))
- for destPath:=range ir.Files {keys=append(keys,destPath)}
- sort.Strings(keys)
- for _,destPath:=range keys {
-  entry:=ir.Files[destPath]
-  fi:=&files.ContentFileInfo{Owner:entry.Owner,Group:entry.Group,Mode:entry.Mode,MTime:entry.ModTime}
+	keys := make([]string, 0, len(ir.Files))
+	for destPath := range ir.Files {
+		keys = append(keys, destPath)
+	}
+	sort.Strings(keys)
+	for _, destPath := range keys {
+		entry := ir.Files[destPath]
+		fi := &files.ContentFileInfo{Owner: entry.Owner, Group: entry.Group, Mode: entry.Mode, MTime: entry.ModTime}
 		if entry.IsSymlink {
 			info.Contents = append(info.Contents, &files.Content{
 				Source:      entry.SymlinkTarget,
 				Destination: destPath,
 				Type:        "symlink",
-    FileInfo: fi,
+				FileInfo:    fi,
 			})
 		} else if entry.IsDir {
 			info.Contents = append(info.Contents, &files.Content{
 				Destination: destPath,
 				Type:        "dir",
-    FileInfo: fi,
+				FileInfo:    fi,
 			})
 		} else {
 			src := entry.SourcePath
@@ -99,7 +109,7 @@ func BuildPackage(ir *domain.PackageIR, targetFormat string, out io.Writer) erro
 			info.Contents = append(info.Contents, &files.Content{
 				Source:      src,
 				Destination: destPath,
-    FileInfo: fi,
+				FileInfo:    fi,
 			})
 		}
 	}
@@ -115,17 +125,33 @@ func BuildPackage(ir *domain.PackageIR, targetFormat string, out io.Writer) erro
 
 // BuildPackageToFile builds package directly into destination file on disk.
 func BuildPackageToFile(ir *domain.PackageIR, targetFormat, outputPath string) error {
- dir:=filepath.Dir(outputPath)
- if err:=os.MkdirAll(dir,0755);err!=nil{return fmt.Errorf("create output dir: %w",err)}
- tmp,err:=os.CreateTemp(dir,".mutate-output-*")
- if err!=nil{return fmt.Errorf("create temporary output: %w",err)}
- defer os.Remove(tmp.Name())
- if err:=BuildPackage(ir,targetFormat,tmp);err!=nil{_ =tmp.Close();return err}
- if err:=tmp.Sync();err!=nil{_ =tmp.Close();return err}
- if err:=tmp.Close();err!=nil{return err}
- if err:=os.Chmod(tmp.Name(),0644);err!=nil{return err}
- if err:=os.Rename(tmp.Name(),outputPath);err!=nil{return fmt.Errorf("publish output: %w",err)}
- return nil
+	dir := filepath.Dir(outputPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create output dir: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, ".mutate-output-*")
+	if err != nil {
+		return fmt.Errorf("create temporary output: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+	if err := BuildPackage(ir, targetFormat, tmp); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), 0644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp.Name(), outputPath); err != nil {
+		return fmt.Errorf("publish output: %w", err)
+	}
+	return nil
 }
 
 func normalizeFormatName(fmtStr string) string {

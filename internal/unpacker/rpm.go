@@ -1,7 +1,7 @@
 package unpacker
 
 import (
- "archive/tar"
+	"archive/tar"
 	"errors"
 	"fmt"
 	"io"
@@ -85,15 +85,21 @@ func (u *RpmUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Package
 		if err != nil {
 			return nil, fmt.Errorf("read cpio header: %w", err)
 		}
-  fileType:=hdr.Mode & 0170000
-  var kind byte
-  switch fileType {
-  case 0040000:kind=tar.TypeDir
-  case 0120000:kind=tar.TypeSymlink
-  case 0100000,0:kind=tar.TypeReg
-  default:return nil,fmt.Errorf("unsupported rpm cpio entry %q (mode %o)",hdr.Name,hdr.Mode)
-  }
-  if err:=extractArchiveEntry(stagingDir,ir,hdr.Name,kind,hdr.Linkname,os.FileMode(hdr.Mode&07777),hdr.ModTime,"","",cpioReader);err!=nil{return nil,fmt.Errorf("extract rpm entry %q: %w",hdr.Name,err)}
+		fileType := hdr.Mode & 0170000
+		var kind byte
+		switch fileType {
+		case 0040000:
+			kind = tar.TypeDir
+		case 0120000:
+			kind = tar.TypeSymlink
+		case 0100000, 0:
+			kind = tar.TypeReg
+		default:
+			return nil, fmt.Errorf("unsupported rpm cpio entry %q (mode %o)", hdr.Name, hdr.Mode)
+		}
+		if err := extractArchiveEntry(stagingDir, ir, hdr.Name, kind, hdr.Linkname, os.FileMode(hdr.Mode&07777), hdr.ModTime, "", "", cpioReader); err != nil {
+			return nil, fmt.Errorf("extract rpm entry %q: %w", hdr.Name, err)
+		}
 	}
 
 	return ir, nil

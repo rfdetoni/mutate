@@ -1,9 +1,9 @@
 package resolver
 
 import (
- "fmt"
 	"bufio"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 )
@@ -71,24 +71,35 @@ func DetectHostDistro() Distro {
 
 // NewAutoResolver returns the appropriate DependencyResolver for the current host system.
 func NewAutoResolver() DependencyResolver {
- resolver,err:=NewResolverFor(DetectHostDistro())
- if err!=nil{return &unsupportedResolver{distro:DetectHostDistro()}}
- return resolver
+	resolver, err := NewResolverFor(DetectHostDistro())
+	if err != nil {
+		return &unsupportedResolver{distro: DetectHostDistro()}
+	}
+	return resolver
 }
-type unsupportedResolver struct {distro Distro}
-func (r *unsupportedResolver) Resolve(name string)(string,error){return "",fmt.Errorf("no resolver for %s: %w",r.distro,ErrNotFound)}
-func (r *unsupportedResolver) HostDistro() Distro{return r.distro}
+
+type unsupportedResolver struct{ distro Distro }
+
+func (r *unsupportedResolver) Resolve(name string) (string, error) {
+	return "", fmt.Errorf("no resolver for %s: %w", r.distro, ErrNotFound)
+}
+func (r *unsupportedResolver) HostDistro() Distro { return r.distro }
 
 var ErrNotFound = errors.New("library not found in host packages")
 
- // NewResolverFor selects a resolver for a target distribution.
- // Never silently fall back to Debian for unknown hosts.
-func NewResolverFor(distro Distro) (DependencyResolver,error) {
- switch distro {
- case DistroDebian:return NewDebianResolver(),nil
- case DistroArch:return NewArchResolver(),nil
- case DistroFedora:return NewFedoraResolver(),nil
- case DistroAlpine:return NewAlpineResolver(),nil
- default:return nil,fmt.Errorf("no dependency resolver for %q",distro)
- }
+// NewResolverFor selects a resolver for a target distribution.
+// Never silently fall back to Debian for unknown hosts.
+func NewResolverFor(distro Distro) (DependencyResolver, error) {
+	switch distro {
+	case DistroDebian:
+		return NewDebianResolver(), nil
+	case DistroArch:
+		return NewArchResolver(), nil
+	case DistroFedora:
+		return NewFedoraResolver(), nil
+	case DistroAlpine:
+		return NewAlpineResolver(), nil
+	default:
+		return nil, fmt.Errorf("no dependency resolver for %q", distro)
+	}
 }

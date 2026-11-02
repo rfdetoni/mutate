@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
- "strings"
+	"strings"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/rfdetoni/mutate/internal/domain"
@@ -45,20 +45,30 @@ func DecompressStream(r io.Reader, compType string) (io.ReadCloser, error) {
 
 // ExtractTarStream extracts a tar stream into targetDir safely preventing ZipSlip/path traversal.
 func ExtractTarStream(tr *tar.Reader, targetDir string, ir *domain.PackageIR) error {
- for {
-  hdr,err:=tr.Next()
-  if err==io.EOF{return nil}
-  if err!=nil{return fmt.Errorf("read tar entry: %w",err)}
-  if hdr.Typeflag==tar.TypeDir && (filepath.Clean(hdr.Name)=="." || filepath.Clean(hdr.Name)=="/"){continue}
-  if hdr.Size>maxEntryBytes{return fmt.Errorf("archive entry too large: %q",hdr.Name)}
-  if err:=extractArchiveEntry(targetDir,ir,hdr.Name,hdr.Typeflag,hdr.Linkname,hdr.FileInfo().Mode(),hdr.ModTime,hdr.Uname,hdr.Gname,tr);err!=nil{return fmt.Errorf("extract %q: %w",hdr.Name,err)}
- }
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("read tar entry: %w", err)
+		}
+		if hdr.Typeflag == tar.TypeDir && (filepath.Clean(hdr.Name) == "." || filepath.Clean(hdr.Name) == "/") {
+			continue
+		}
+		if hdr.Size > maxEntryBytes {
+			return fmt.Errorf("archive entry too large: %q", hdr.Name)
+		}
+		if err := extractArchiveEntry(targetDir, ir, hdr.Name, hdr.Typeflag, hdr.Linkname, hdr.FileInfo().Mode(), hdr.ModTime, hdr.Uname, hdr.Gname, tr); err != nil {
+			return fmt.Errorf("extract %q: %w", hdr.Name, err)
+		}
+	}
 }
 
 // SanitizeStagingPath safely computes staging destination without path traversal.
 func SanitizeStagingPath(baseDir, relativePath string) (string, error) {
- dest,_,err:=archiveDestination(baseDir,relativePath,nil)
- return dest,err
+	dest, _, err := archiveDestination(baseDir, relativePath, nil)
+	return dest, err
 }
 
 func copyFile(src, dst string) error {
@@ -88,4 +98,3 @@ func defaultString(s, def string) string {
 	}
 	return s
 }
-

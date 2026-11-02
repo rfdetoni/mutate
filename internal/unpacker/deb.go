@@ -136,7 +136,9 @@ func parseDebControl(data []byte, meta *domain.Metadata) {
 			meta.Name = val
 		case "Version":
 			vParts := []string{val}
-   if i:=strings.LastIndex(val,"-");i>0 {vParts=[]string{val[:i],val[i+1:]}}
+			if i := strings.LastIndex(val, "-"); i > 0 {
+				vParts = []string{val[:i], val[i+1:]}
+			}
 			meta.Version = vParts[0]
 			if len(vParts) > 1 {
 				meta.Release = vParts[1]

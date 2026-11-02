@@ -68,11 +68,11 @@ func TestArchResolverSearch(t *testing.T) {
 }
 
 func TestBundlerRejectsMissingLibraries(t *testing.T) {
- stage:=t.TempDir()
- ir:=domain.NewPackageIR(stage,domain.FormatRPM)
- if err:=NewLibraryBundler("test").BundleMissingLibraries(ir,[]string{"libold.so.1"},DistroDebian);err==nil{
-  t.Fatal("must not claim success without an actual library source")
- }
+	stage := t.TempDir()
+	ir := domain.NewPackageIR(stage, domain.FormatRPM)
+	if err := NewLibraryBundler("test").BundleMissingLibraries(ir, []string{"libold.so.1"}, DistroDebian); err == nil {
+		t.Fatal("must not claim success without an actual library source")
+	}
 }
 
 func bytesContains(b []byte, s string) bool {

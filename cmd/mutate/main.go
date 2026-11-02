@@ -135,73 +135,90 @@ func newInspectCmd() *cobra.Command {
 }
 
 func newBuildCmd() *cobra.Command {
- var targetFormat, outputPath string
- var allowSourceBuild bool
- var libraryDir string
- cmd:=&cobra.Command{
-  Use:"build <package-file> --to <deb|rpm|arch|apk> [-o output]",
-  Short:"Convert a package to a native Linux package",
-  Args:cobra.ExactArgs(1),
-  RunE:func(cmd *cobra.Command,args []string)error {
-   ir,cleanup,err:=prepareConversion(args[0],targetFormat,allowSourceBuild,libraryDir)
-   if err!=nil{return err}
-   defer cleanup()
-   out:=outputPath
-   if out=="" {
-    ext:=targetFormat
-    if ext=="arch"{ext="pkg.tar.zst"}
-    out=fmt.Sprintf("%s_%s-%s_%s.%s",ir.Metadata.Name,ir.Metadata.Version,ir.Metadata.Release,ir.Metadata.Architecture,ext)
-   }
-   if err:=packager.BuildPackageToFile(ir,targetFormat,out);err!=nil{return err}
-   fmt.Printf("Package created: %s\n",out)
-   return nil
-  },
- }
- cmd.Flags().StringVar(&targetFormat,"to","","Target format (deb, rpm, arch, apk)")
- cmd.Flags().StringVarP(&outputPath,"output","o","","Output package path")
- cmd.Flags().BoolVar(&allowSourceBuild,"allow-source-build",false,"Execute source build tools on host (UNSANDBOXED)")
- cmd.Flags().StringVar(&libraryDir,"library-dir","","Directory of explicitly supplied ELF libraries to isolate")
- _=cmd.MarkFlagRequired("to")
- return cmd
+	var targetFormat, outputPath string
+	var allowSourceBuild bool
+	var libraryDir string
+	cmd := &cobra.Command{
+		Use:   "build <package-file> --to <deb|rpm|arch|apk> [-o output]",
+		Short: "Convert a package to a native Linux package",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ir, cleanup, err := prepareConversion(args[0], targetFormat, allowSourceBuild, libraryDir)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			out := outputPath
+			if out == "" {
+				ext := targetFormat
+				if ext == "arch" {
+					ext = "pkg.tar.zst"
+				}
+				out = fmt.Sprintf("%s_%s-%s_%s.%s", ir.Metadata.Name, ir.Metadata.Version, ir.Metadata.Release, ir.Metadata.Architecture, ext)
+			}
+			if err := packager.BuildPackageToFile(ir, targetFormat, out); err != nil {
+				return err
+			}
+			fmt.Printf("Package created: %s\n", out)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&targetFormat, "to", "", "Target format (deb, rpm, arch, apk)")
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Output package path")
+	cmd.Flags().BoolVar(&allowSourceBuild, "allow-source-build", false, "Execute source build tools on host (UNSANDBOXED)")
+	cmd.Flags().StringVar(&libraryDir, "library-dir", "", "Directory of explicitly supplied ELF libraries to isolate")
+	_ = cmd.MarkFlagRequired("to")
+	return cmd
 }
 
 func newInstallCmd() *cobra.Command {
- var dryRun,allowSourceBuild bool
- var libraryDir string
- cmd:=&cobra.Command{
-  Use:"install <package-file> [--dry-run]",
-  Short:"Convert to host format and install with native package manager",
-  Args:cobra.ExactArgs(1),
-  RunE:func(cmd *cobra.Command,args []string)error {
-   host:=resolver.DetectHostDistro()
-   var target string
-   switch host {
-   case resolver.DistroDebian:target="deb"
-   case resolver.DistroFedora:target="rpm"
-   case resolver.DistroArch:target="arch"
-   case resolver.DistroAlpine:target="apk"
-   default:return fmt.Errorf("unsupported host distribution %q",host)
-   }
-   src:=args[0]
-   if dryRun{
-    sourceFmt,err:=detector.DetectFile(src)
-    if err!=nil{return err}
-    fmt.Printf("[dry-run] Would convert %s (%s) to %s and request installation; no source build, packaging, or installation executed\n",src,sourceFmt,target)
-    return nil
-   }
-   ir,cleanup,err:=prepareConversion(src,target,allowSourceBuild,libraryDir)
-   if err!=nil{return err}
-   defer cleanup()
-   // Unique secure temporary directory; never derive a path from PID alone.
-   out:=filepath.Join(ir.StagingDir,"mutate-output."+map[string]string{"arch":"pkg.tar.zst","deb":"deb","rpm":"rpm","apk":"apk"}[target])
-   if err:=packager.BuildPackageToFile(ir,target,out);err!=nil{return err}
-   return packager.InstallPackage(out,host,false)
-  },
- }
- cmd.Flags().BoolVar(&dryRun,"dry-run",false,"Print planned operation without executing conversion or install")
- cmd.Flags().BoolVar(&allowSourceBuild,"allow-source-build",false,"Execute source build tools on host (UNSANDBOXED)")
- cmd.Flags().StringVar(&libraryDir,"library-dir","","Directory of explicitly supplied ELF libraries to isolate")
- return cmd
+	var dryRun, allowSourceBuild bool
+	var libraryDir string
+	cmd := &cobra.Command{
+		Use:   "install <package-file> [--dry-run]",
+		Short: "Convert to host format and install with native package manager",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			host := resolver.DetectHostDistro()
+			var target string
+			switch host {
+			case resolver.DistroDebian:
+				target = "deb"
+			case resolver.DistroFedora:
+				target = "rpm"
+			case resolver.DistroArch:
+				target = "arch"
+			case resolver.DistroAlpine:
+				target = "apk"
+			default:
+				return fmt.Errorf("unsupported host distribution %q", host)
+			}
+			src := args[0]
+			if dryRun {
+				sourceFmt, err := detector.DetectFile(src)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("[dry-run] Would convert %s (%s) to %s and request installation; no source build, packaging, or installation executed\n", src, sourceFmt, target)
+				return nil
+			}
+			ir, cleanup, err := prepareConversion(src, target, allowSourceBuild, libraryDir)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			// Unique secure temporary directory; never derive a path from PID alone.
+			out := filepath.Join(ir.StagingDir, "mutate-output."+map[string]string{"arch": "pkg.tar.zst", "deb": "deb", "rpm": "rpm", "apk": "apk"}[target])
+			if err := packager.BuildPackageToFile(ir, target, out); err != nil {
+				return err
+			}
+			return packager.InstallPackage(out, host, false)
+		},
+	}
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print planned operation without executing conversion or install")
+	cmd.Flags().BoolVar(&allowSourceBuild, "allow-source-build", false, "Execute source build tools on host (UNSANDBOXED)")
+	cmd.Flags().StringVar(&libraryDir, "library-dir", "", "Directory of explicitly supplied ELF libraries to isolate")
+	return cmd
 }
 
 func parseDomainFormat(s string) domain.Format {

@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
- "os"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -78,9 +78,15 @@ func (u *ArchUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Packag
 			// Ignore packaging metadata
 			continue
 		}
-  if hdr.Typeflag==tar.TypeDir && (cleanName=="." || cleanName=="/"){continue}
-  if hdr.Size>maxEntryBytes{return nil,fmt.Errorf("archive entry too large: %q",hdr.Name)}
-  if err:=extractArchiveEntry(stagingDir,ir,hdr.Name,hdr.Typeflag,hdr.Linkname,hdr.FileInfo().Mode(),hdr.ModTime,hdr.Uname,hdr.Gname,tr);err!=nil{return nil,fmt.Errorf("extract %q: %w",hdr.Name,err)}
+		if hdr.Typeflag == tar.TypeDir && (cleanName == "." || cleanName == "/") {
+			continue
+		}
+		if hdr.Size > maxEntryBytes {
+			return nil, fmt.Errorf("archive entry too large: %q", hdr.Name)
+		}
+		if err := extractArchiveEntry(stagingDir, ir, hdr.Name, hdr.Typeflag, hdr.Linkname, hdr.FileInfo().Mode(), hdr.ModTime, hdr.Uname, hdr.Gname, tr); err != nil {
+			return nil, fmt.Errorf("extract %q: %w", hdr.Name, err)
+		}
 	}
 
 	return ir, nil
