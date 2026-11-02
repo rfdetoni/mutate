@@ -7,10 +7,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+ "sync"
 )
 
 type DebianResolver struct {
-	dpkgInfoDir string
+ dpkgInfoDir string
+ once sync.Once
+ index map[string]string
+ indexErr error
 }
 
 func NewDebianResolver() *DebianResolver {
@@ -50,43 +54,27 @@ func (r *DebianResolver) Resolve(soName string) (string, error) {
 	return "", fmt.Errorf("%w: %s on debian", ErrNotFound, soName)
 }
 
-func (r *DebianResolver) searchDpkgInfo(soName string) (string, error) {
-	entries, err := os.ReadDir(r.dpkgInfoDir)
-	if err != nil {
-		return "", err
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".list") {
-			continue
-		}
-
-		fullPath := filepath.Join(r.dpkgInfoDir, entry.Name())
-		f, err := os.Open(fullPath)
-		if err != nil {
-			continue
-		}
-
-		found := false
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.HasSuffix(line, "/"+soName) || line == soName {
-				found = true
-				break
-			}
-		}
-		f.Close()
-
-		if found {
-			base := strings.TrimSuffix(entry.Name(), ".list")
-			// Remove architecture suffix if present: e.g. libssl3:amd64 -> libssl3
-			if colonIdx := strings.Index(base, ":"); colonIdx > 0 {
-				base = base[:colonIdx]
-			}
-			return base, nil
-		}
-	}
-
-	return "", ErrNotFound
+func (r *DebianResolver) searchDpkgInfo(soName string) (string,error) {
+ r.once.Do(func(){
+  r.index=make(map[string]string)
+  entries,err:=os.ReadDir(r.dpkgInfoDir)
+  if err!=nil{r.indexErr=err;return}
+  for _,entry:=range entries {
+   if entry.IsDir() || !strings.HasSuffix(entry.Name(),".list"){continue}
+   name:=strings.TrimSuffix(entry.Name(),".list")
+   if i:=strings.Index(name,":");i>0{name=name[:i]}
+   f,err:=os.Open(filepath.Join(r.dpkgInfoDir,entry.Name()))
+   if err!=nil{continue}
+   scanner:=bufio.NewScanner(f)
+   for scanner.Scan(){
+    base:=filepath.Base(scanner.Text())
+    if !strings.Contains(base,".so"){continue}
+    if _,ok:=r.index[base];!ok{r.index[base]=name}
+   }
+   f.Close()
+  }
+ })
+ if r.indexErr!=nil{return "",r.indexErr}
+ if name,ok:=r.index[soName];ok{return name,nil}
+ return "",ErrNotFound
 }
