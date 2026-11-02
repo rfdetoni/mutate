@@ -148,3 +148,21 @@ go test -v ./...
 ## License
 
 This project is licensed under the GPL-3.0 License. See [LICENSE](LICENSE) for details.
+
+### AppImage type 2 conversion
+
+`mutate build program.AppImage --to deb -o program.deb` uses the optional `unsquashfs` command from `squashfs-tools`. It extracts a SquashFS v4 payload *without executing the AppImage runtime*, installs the AppDir under `/opt/<name>`, and creates a launcher for `AppRun`. Type 1 AppImage is not supported. Always test runtime compatibility on the target distribution.
+
+### Sandboxed source builds
+
+`mutate build project.tar.gz --to deb --allow-source-build` requires Linux Bubblewrap (`bwrap`) with user namespaces. Build tools execute in a mount, process and network namespace with only the staging tree writable. No fallback to unsandboxed builds is allowed. Offline dependencies must be vendored or available in the sandbox.
+
+### Cross-distribution dependency mapping
+
+Provide a verified JSON map with `--dependency-map deps.json` when source and destination formats differ, and for shared libraries not resolvable on the target host. Dynamic library keys start with `so:`:
+
+```json
+{"libc6": "glibc", "so:libc.so.6": "glibc", "so:libssl.so.3": "openssl-libs"}
+```
+
+Cross-format lifecycle scripts are transformed only when their POSIX syntax can be conservatively translated. Arch installation functions are split into lifecycle stages; unsupported upgrade hooks and source-specific package-manager commands are rejected rather than silently changed. Mapping package names does not prove ABI/runtime compatibility.

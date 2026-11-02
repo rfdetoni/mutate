@@ -51,6 +51,8 @@ func getUnpackerForFormat(fmtType domain.Format) (unpacker.Unpacker, error) {
 		return unpacker.NewAndroidUnpacker(), nil
 	case domain.FormatTarball:
 		return unpacker.NewSourceUnpacker(), nil
+ case domain.FormatAppImage:
+  return unpacker.NewAppImageUnpacker(),nil
 	default:
 		return nil, fmt.Errorf("unsupported package format: %s", fmtType)
 	}
@@ -122,7 +124,7 @@ func newInspectCmd() *cobra.Command {
 				for _, lib := range analysis.ExternalLibraries {
 					provider, err := res.Resolve(lib)
 					if err != nil {
-						fmt.Printf("  • %-25s -> [NOT FOUND on host - bundler will isolate]\n", lib)
+						fmt.Printf("  • %-25s -> [NOT FOUND on host; explicit mapping or --library-dir required]\n", lib)
 					} else {
 						fmt.Printf("  • %-25s -> %s\n", lib, provider)
 					}
@@ -138,12 +140,13 @@ func newBuildCmd() *cobra.Command {
 	var targetFormat, outputPath string
 	var allowSourceBuild bool
 	var libraryDir string
-	cmd := &cobra.Command{
+ var dependencyMapPath string
+ cmd := &cobra.Command{
 		Use:   "build <package-file> --to <deb|rpm|arch|apk> [-o output]",
 		Short: "Convert a package to a native Linux package",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ir, cleanup, err := prepareConversion(args[0], targetFormat, allowSourceBuild, libraryDir)
+			ir, cleanup, err := prepareConversionWithOptions(args[0],targetFormat,allowSourceBuild,conversionOptions{LibraryDir:libraryDir,DependencyMapPath:dependencyMapPath})
 			if err != nil {
 				return err
 			}
@@ -165,8 +168,9 @@ func newBuildCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&targetFormat, "to", "", "Target format (deb, rpm, arch, apk)")
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Output package path")
-	cmd.Flags().BoolVar(&allowSourceBuild, "allow-source-build", false, "Execute source build tools on host (UNSANDBOXED)")
-	cmd.Flags().StringVar(&libraryDir, "library-dir", "", "Directory of explicitly supplied ELF libraries to isolate")
+	cmd.Flags().BoolVar(&allowSourceBuild, "allow-source-build", false, "Build trusted source in mandatory bubblewrap sandbox (offline)")
+	cmd.Flags().StringVar(&libraryDir,"library-dir","","Directory of explicitly supplied ELF libraries to isolate")
+ cmd.Flags().StringVar(&dependencyMapPath,"dependency-map","","JSON map of source dependencies / so:library names to target packages")
 	_ = cmd.MarkFlagRequired("to")
 	return cmd
 }
@@ -174,7 +178,8 @@ func newBuildCmd() *cobra.Command {
 func newInstallCmd() *cobra.Command {
 	var dryRun, allowSourceBuild bool
 	var libraryDir string
-	cmd := &cobra.Command{
+ var dependencyMapPath string
+ cmd := &cobra.Command{
 		Use:   "install <package-file> [--dry-run]",
 		Short: "Convert to host format and install with native package manager",
 		Args:  cobra.ExactArgs(1),
@@ -202,7 +207,7 @@ func newInstallCmd() *cobra.Command {
 				fmt.Printf("[dry-run] Would convert %s (%s) to %s and request installation; no source build, packaging, or installation executed\n", src, sourceFmt, target)
 				return nil
 			}
-			ir, cleanup, err := prepareConversion(src, target, allowSourceBuild, libraryDir)
+			ir, cleanup, err := prepareConversionWithOptions(src,target,allowSourceBuild,conversionOptions{LibraryDir:libraryDir,DependencyMapPath:dependencyMapPath})
 			if err != nil {
 				return err
 			}
@@ -216,8 +221,9 @@ func newInstallCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print planned operation without executing conversion or install")
-	cmd.Flags().BoolVar(&allowSourceBuild, "allow-source-build", false, "Execute source build tools on host (UNSANDBOXED)")
-	cmd.Flags().StringVar(&libraryDir, "library-dir", "", "Directory of explicitly supplied ELF libraries to isolate")
+	cmd.Flags().BoolVar(&allowSourceBuild, "allow-source-build", false, "Build trusted source in mandatory bubblewrap sandbox (offline)")
+	cmd.Flags().StringVar(&libraryDir,"library-dir","","Directory of explicitly supplied ELF libraries to isolate")
+ cmd.Flags().StringVar(&dependencyMapPath,"dependency-map","","JSON map of source dependencies / so:library names to target packages")
 	return cmd
 }
 

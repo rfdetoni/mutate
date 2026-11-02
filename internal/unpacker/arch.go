@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/rfdetoni/mutate/internal/domain"
+ "github.com/rfdetoni/mutate/internal/scripts"
 )
 
 type ArchUnpacker struct{}
@@ -71,7 +72,7 @@ func (u *ArchUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Packag
 			if err != nil {
 				return nil, fmt.Errorf("read .INSTALL: %w", err)
 			}
-			parseArchInstallScript(string(data), &ir.Scripts)
+			if err:=parseArchInstallScript(string(data), &ir.Scripts);err!=nil{return nil,fmt.Errorf("parse .INSTALL: %w",err)}
 			continue
 
 		case ".MTREE", ".BUILDINFO":
@@ -133,15 +134,9 @@ func parseArchPkgInfo(data []byte, meta *domain.Metadata) {
 	}
 }
 
-func parseArchInstallScript(script string, scripts *domain.Scripts) {
-	// Simple mapping of arch install functions to lifecycle scripts
-	if strings.Contains(script, "post_install") {
-		scripts.PostInstall = script
-	}
-	if strings.Contains(script, "pre_remove") {
-		scripts.PreRemove = script
-	}
-	if strings.Contains(script, "post_remove") {
-		scripts.PostRemove = script
-	}
+func parseArchInstallScript(raw string, result *domain.Scripts) error {
+ hooks,err:=scripts.ExtractArchInstall(raw)
+ if err!=nil{return err}
+ *result=hooks
+ return nil
 }

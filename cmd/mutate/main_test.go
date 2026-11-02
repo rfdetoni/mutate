@@ -12,7 +12,7 @@ import (
 	"github.com/blakesmith/ar"
 )
 
-func createSampleDeb(t *testing.T) string {
+func createSampleDeb(t *testing.T, dependencies ...string) string {
 	var arBuf bytes.Buffer
 	aw := ar.NewWriter(&arBuf)
 	aw.WriteGlobalHeader()
@@ -31,6 +31,7 @@ func createSampleDeb(t *testing.T) string {
 	gzwCtl := gzip.NewWriter(&ctlTar)
 	twCtl := tar.NewWriter(gzwCtl)
 	ctl := "Package: sample\nVersion: 1.0.0-1\nArchitecture: amd64\nDescription: Sample CLI test\n"
+ if len(dependencies)>0{ctl+="Depends: "+dependencies[0]+"\n"}
 	twCtl.WriteHeader(&tar.Header{
 		Name: "./control",
 		Mode: 0644,

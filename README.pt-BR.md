@@ -150,3 +150,9 @@ Distribuído sob a licença GPL-3.0. Consulte o arquivo [LICENSE](LICENSE) para 
 - AppImage é identificado, mas ainda não pode ser convertido. ZIP genérico também não é aceito como tarball.
 - `install --dry-run` informa o plano, sem compilar nem instalar.
 - Use Go 1.26.4 ou posterior, de acordo com o `go.mod`.
+
+## AppImage, compilação isolada e dependências entre distribuições
+
+- **AppImage tipo 2:** `mutate build app.AppImage --to deb` exige `unsquashfs` (pacote `squashfs-tools`). Extrai o SquashFS sem executar o runtime, preserva o AppDir em `/opt/<nome>` e cria um lançador `AppRun`. Verifique a compatibilidade no destino.
+- **Build isolado:** `--allow-source-build` exige `bubblewrap` com user namespaces. Sem sandbox a compilação não acontece; a rede fica indisponível e só o staging pode ser escrito.
+- **Dependências entre distros:** `--dependency-map deps.json` recebe um objeto JSON com nomes de pacotes origem/destino e chaves `so:lib.so.N`. A tradução de scripts é conservadora; hooks sem equivalência segura geram erro.
