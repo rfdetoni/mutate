@@ -37,14 +37,24 @@ func TestPortableLifecycleScripts(t *testing.T) {
 	}
 }
 
-func TestServiceManagerPortability(t *testing.T){
- alpineOpts:=TranspileOptions{TargetFormat:domain.FormatAlpineAPK}
- got,err:=TranspileScript("systemctl enable sshd\nsystemctl restart sshd\n",alpineOpts)
- if err!=nil{t.Fatal(err)}
- if !strings.Contains(got,"rc-update add sshd default") || !strings.Contains(got,"rc-service sshd restart"){t.Fatalf("wrong Alpine translation: %s",got)}
- systemdOpts:=TranspileOptions{TargetFormat:domain.FormatDEB,UseSystemd:true}
- got,err=TranspileScript("rc-update add sshd default\nrc-service sshd start\n",systemdOpts)
- if err!=nil{t.Fatal(err)}
- if !strings.Contains(got,"systemctl enable sshd") || !strings.Contains(got,"systemctl start sshd"){t.Fatalf("wrong systemd translation: %s",got)}
- if _,err:=TranspileScript("systemctl daemon-reload\n",alpineOpts);err==nil{t.Fatal("unsupported action should fail closed")}
+func TestServiceManagerPortability(t *testing.T) {
+	alpineOpts := TranspileOptions{TargetFormat: domain.FormatAlpineAPK}
+	got, err := TranspileScript("systemctl enable sshd\nsystemctl restart sshd\n", alpineOpts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "rc-update add sshd default") || !strings.Contains(got, "rc-service sshd restart") {
+		t.Fatalf("wrong Alpine translation: %s", got)
+	}
+	systemdOpts := TranspileOptions{TargetFormat: domain.FormatDEB, UseSystemd: true}
+	got, err = TranspileScript("rc-update add sshd default\nrc-service sshd start\n", systemdOpts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "systemctl enable sshd") || !strings.Contains(got, "systemctl start sshd") {
+		t.Fatalf("wrong systemd translation: %s", got)
+	}
+	if _, err := TranspileScript("systemctl daemon-reload\n", alpineOpts); err == nil {
+		t.Fatal("unsupported action should fail closed")
+	}
 }
