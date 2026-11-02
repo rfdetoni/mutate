@@ -98,11 +98,13 @@ func TranspilePackageScripts(ir *domain.PackageIR, targetFormat domain.Format) e
 	if targetFormat == domain.FormatUnknown {
 		return fmt.Errorf("unsupported target script format")
 	}
-	if ir.Format!=targetFormat {
-  for _,raw:=range []string{ir.Scripts.PreInstall,ir.Scripts.PostInstall,ir.Scripts.PreRemove,ir.Scripts.PostRemove}{
-   if err:=validatePortableLifecycle(raw);err!=nil{return err}
-  }
- }
+	if ir.Format != targetFormat {
+		for _, raw := range []string{ir.Scripts.PreInstall, ir.Scripts.PostInstall, ir.Scripts.PreRemove, ir.Scripts.PostRemove} {
+			if err := validatePortableLifecycle(raw); err != nil {
+				return err
+			}
+		}
+	}
 	opts := TranspileOptions{
 		TargetFormat:    targetFormat,
 		RemoveLdconfig:  false,
@@ -143,56 +145,87 @@ func makeWord(lit string) *syntax.Word {
 	}
 }
 
- // ExtractArchInstall separates lifecycle function bodies from an Arch .INSTALL
- // file. Arch functions cannot be carried verbatim as Debian/RPM scriptlets.
-func ExtractArchInstall(raw string)(domain.Scripts,error){
- file,err:=syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(raw),"")
- if err!=nil{return domain.Scripts{},fmt.Errorf("invalid Arch .INSTALL: %w",err)}
- hooks:=make(map[string]*syntax.FuncDecl)
- var helpers []*syntax.Stmt
- for _,stmt:=range file.Stmts{
-  fn,ok:=stmt.Cmd.(*syntax.FuncDecl)
-  if !ok{return domain.Scripts{},fmt.Errorf("unsupported top-level statement in Arch .INSTALL")}
-  switch fn.Name.Value{
-  case "pre_install","post_install","pre_remove","post_remove":
-   if _,exists:=hooks[fn.Name.Value];exists{return domain.Scripts{},fmt.Errorf("duplicate Arch hook %s",fn.Name.Value)}
-   hooks[fn.Name.Value]=fn
-  case "pre_upgrade","post_upgrade":
-   return domain.Scripts{},fmt.Errorf("Arch upgrade hook %s requires upgrade-specific output support",fn.Name.Value)
-  default:helpers=append(helpers,stmt)
-  }
- }
- extract:=func(name string)(string,error){
-  fn:=hooks[name]
-  if fn==nil{return "",nil}
-  body,ok:=fn.Body.Cmd.(*syntax.Block)
-  if !ok{return "",fmt.Errorf("unsupported Arch hook body %s",name)}
-  all:=append(append([]*syntax.Stmt{},helpers...),body.Stmts...)
-  var buf bytes.Buffer
-  if err:=syntax.NewPrinter().Print(&buf,&syntax.File{Stmts:all});err!=nil{return "",err}
-  return buf.String(),nil
- }
- var result domain.Scripts
- if result.PreInstall,err=extract("pre_install");err!=nil{return result,err}
- if result.PostInstall,err=extract("post_install");err!=nil{return result,err}
- if result.PreRemove,err=extract("pre_remove");err!=nil{return result,err}
- if result.PostRemove,err=extract("post_remove");err!=nil{return result,err}
- return result,nil
+// ExtractArchInstall separates lifecycle function bodies from an Arch .INSTALL
+// file. Arch functions cannot be carried verbatim as Debian/RPM scriptlets.
+func ExtractArchInstall(raw string) (domain.Scripts, error) {
+	file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(raw), "")
+	if err != nil {
+		return domain.Scripts{}, fmt.Errorf("invalid Arch .INSTALL: %w", err)
+	}
+	hooks := make(map[string]*syntax.FuncDecl)
+	var helpers []*syntax.Stmt
+	for _, stmt := range file.Stmts {
+		fn, ok := stmt.Cmd.(*syntax.FuncDecl)
+		if !ok {
+			return domain.Scripts{}, fmt.Errorf("unsupported top-level statement in Arch .INSTALL")
+		}
+		switch fn.Name.Value {
+		case "pre_install", "post_install", "pre_remove", "post_remove":
+			if _, exists := hooks[fn.Name.Value]; exists {
+				return domain.Scripts{}, fmt.Errorf("duplicate Arch hook %s", fn.Name.Value)
+			}
+			hooks[fn.Name.Value] = fn
+		case "pre_upgrade", "post_upgrade":
+			return domain.Scripts{}, fmt.Errorf("Arch upgrade hook %s requires upgrade-specific output support", fn.Name.Value)
+		default:
+			helpers = append(helpers, stmt)
+		}
+	}
+	extract := func(name string) (string, error) {
+		fn := hooks[name]
+		if fn == nil {
+			return "", nil
+		}
+		body, ok := fn.Body.Cmd.(*syntax.Block)
+		if !ok {
+			return "", fmt.Errorf("unsupported Arch hook body %s", name)
+		}
+		all := append(append([]*syntax.Stmt{}, helpers...), body.Stmts...)
+		var buf bytes.Buffer
+		if err := syntax.NewPrinter().Print(&buf, &syntax.File{Stmts: all}); err != nil {
+			return "", err
+		}
+		return buf.String(), nil
+	}
+	var result domain.Scripts
+	if result.PreInstall, err = extract("pre_install"); err != nil {
+		return result, err
+	}
+	if result.PostInstall, err = extract("post_install"); err != nil {
+		return result, err
+	}
+	if result.PreRemove, err = extract("pre_remove"); err != nil {
+		return result, err
+	}
+	if result.PostRemove, err = extract("post_remove"); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
-func validatePortableLifecycle(raw string)error{
- if strings.TrimSpace(raw)==""{return nil}
- f,err:=syntax.NewParser().Parse(strings.NewReader(raw),"")
- if err!=nil{return fmt.Errorf("unportable script syntax: %w",err)}
- var problem string
- banned:=map[string]bool{"dpkg":true,"dpkg-query":true,"apt-get":true,"apt":true,"rpm":true,"dnf":true,"yum":true,"pacman":true,"apk":true,"update-rc.d":true,"invoke-rc.d":true}
- syntax.Walk(f,func(n syntax.Node)bool{
-  if x,ok:=n.(*syntax.ParamExp);ok {
-   if x.Param.Value=="@" || x.Param.Value=="#" || (len(x.Param.Value)==1 && x.Param.Value[0]>='0' && x.Param.Value[0]<='9'){problem="source-specific lifecycle positional parameter"}
-  }
-  if call,ok:=n.(*syntax.CallExpr);ok&&len(call.Args)>0&&banned[call.Args[0].Lit()]{problem="distribution-specific package-manager command"}
-  return true
- })
- if problem!=""{return fmt.Errorf("cannot safely translate lifecycle script: %s",problem)}
- return nil
+func validatePortableLifecycle(raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	f, err := syntax.NewParser().Parse(strings.NewReader(raw), "")
+	if err != nil {
+		return fmt.Errorf("unportable script syntax: %w", err)
+	}
+	var problem string
+	banned := map[string]bool{"dpkg": true, "dpkg-query": true, "apt-get": true, "apt": true, "rpm": true, "dnf": true, "yum": true, "pacman": true, "apk": true, "update-rc.d": true, "invoke-rc.d": true}
+	syntax.Walk(f, func(n syntax.Node) bool {
+		if x, ok := n.(*syntax.ParamExp); ok {
+			if x.Param.Value == "@" || x.Param.Value == "#" || (len(x.Param.Value) == 1 && x.Param.Value[0] >= '0' && x.Param.Value[0] <= '9') {
+				problem = "source-specific lifecycle positional parameter"
+			}
+		}
+		if call, ok := n.(*syntax.CallExpr); ok && len(call.Args) > 0 && banned[call.Args[0].Lit()] {
+			problem = "distribution-specific package-manager command"
+		}
+		return true
+	})
+	if problem != "" {
+		return fmt.Errorf("cannot safely translate lifecycle script: %s", problem)
+	}
+	return nil
 }

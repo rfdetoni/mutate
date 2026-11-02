@@ -114,34 +114,50 @@ func (u *SourceUnpacker) BuildSource(ir *domain.PackageIR) error {
 }
 
 func (u *SourceUnpacker) CompileAndInstall(workDir, destDir string, buildSys BuildSystem, pkgName string) error {
- usrBin:=filepath.Join(destDir,"usr/bin")
- if err:=os.MkdirAll(usrBin,0755);err!=nil{return err}
- run:=func(args ...string)error{return runIsolatedBuild(workDir,destDir,args...)}
- switch buildSys {
- case BuildSystemGo:
-  return run("go","build","-o",filepath.Join(usrBin,pkgName),".")
- case BuildSystemCargo:
-  return run("cargo","install","--offline","--path",".","--root",filepath.Join(destDir,"usr"))
- case BuildSystemCMake:
-  buildDir:=filepath.Join(workDir,"build")
-  if err:=run("cmake","-B",buildDir,"-DCMAKE_INSTALL_PREFIX=/usr");err!=nil{return err}
-  if err:=run("cmake","--build",buildDir);err!=nil{return err}
-  return run("cmake","--install",buildDir,"--prefix",filepath.Join(destDir,"usr"))
- case BuildSystemMeson:
-  buildDir:=filepath.Join(workDir,"build")
-  if err:=run("meson","setup",buildDir,"--prefix=/usr");err!=nil{return err}
-  if err:=run("meson","compile","-C",buildDir);err!=nil{return err}
-  return run("meson","install","-C",buildDir)
- case BuildSystemAutotools:
-  if err:=run("./configure","--prefix=/usr");err!=nil{return err}
-  if err:=run("make");err!=nil{return err}
-  return run("make","install","DESTDIR="+destDir)
- case BuildSystemMake:
-  if err:=run("make");err!=nil{return err}
-  return run("make","install","DESTDIR="+destDir,"PREFIX=/usr")
- default:
-  return fmt.Errorf("unsupported source build system %q",buildSys)
- }
+	usrBin := filepath.Join(destDir, "usr/bin")
+	if err := os.MkdirAll(usrBin, 0755); err != nil {
+		return err
+	}
+	run := func(args ...string) error { return runIsolatedBuild(workDir, destDir, args...) }
+	switch buildSys {
+	case BuildSystemGo:
+		return run("go", "build", "-o", filepath.Join(usrBin, pkgName), ".")
+	case BuildSystemCargo:
+		return run("cargo", "install", "--offline", "--path", ".", "--root", filepath.Join(destDir, "usr"))
+	case BuildSystemCMake:
+		buildDir := filepath.Join(workDir, "build")
+		if err := run("cmake", "-B", buildDir, "-DCMAKE_INSTALL_PREFIX=/usr"); err != nil {
+			return err
+		}
+		if err := run("cmake", "--build", buildDir); err != nil {
+			return err
+		}
+		return run("cmake", "--install", buildDir, "--prefix", filepath.Join(destDir, "usr"))
+	case BuildSystemMeson:
+		buildDir := filepath.Join(workDir, "build")
+		if err := run("meson", "setup", buildDir, "--prefix=/usr"); err != nil {
+			return err
+		}
+		if err := run("meson", "compile", "-C", buildDir); err != nil {
+			return err
+		}
+		return run("meson", "install", "-C", buildDir)
+	case BuildSystemAutotools:
+		if err := run("./configure", "--prefix=/usr"); err != nil {
+			return err
+		}
+		if err := run("make"); err != nil {
+			return err
+		}
+		return run("make", "install", "DESTDIR="+destDir)
+	case BuildSystemMake:
+		if err := run("make"); err != nil {
+			return err
+		}
+		return run("make", "install", "DESTDIR="+destDir, "PREFIX=/usr")
+	default:
+		return fmt.Errorf("unsupported source build system %q", buildSys)
+	}
 }
 
 func findRootWorkDir(srcBuildDir string) string {

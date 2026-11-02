@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/rfdetoni/mutate/internal/domain"
- "github.com/rfdetoni/mutate/internal/scripts"
+	"github.com/rfdetoni/mutate/internal/scripts"
 )
 
 type ArchUnpacker struct{}
@@ -72,7 +72,9 @@ func (u *ArchUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Packag
 			if err != nil {
 				return nil, fmt.Errorf("read .INSTALL: %w", err)
 			}
-			if err:=parseArchInstallScript(string(data), &ir.Scripts);err!=nil{return nil,fmt.Errorf("parse .INSTALL: %w",err)}
+			if err := parseArchInstallScript(string(data), &ir.Scripts); err != nil {
+				return nil, fmt.Errorf("parse .INSTALL: %w", err)
+			}
 			continue
 
 		case ".MTREE", ".BUILDINFO":
@@ -135,8 +137,10 @@ func parseArchPkgInfo(data []byte, meta *domain.Metadata) {
 }
 
 func parseArchInstallScript(raw string, result *domain.Scripts) error {
- hooks,err:=scripts.ExtractArchInstall(raw)
- if err!=nil{return err}
- *result=hooks
- return nil
+	hooks, err := scripts.ExtractArchInstall(raw)
+	if err != nil {
+		return err
+	}
+	*result = hooks
+	return nil
 }

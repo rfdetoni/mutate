@@ -1,13 +1,13 @@
 package main
 
 import (
- "strings"
- "github.com/rfdetoni/mutate/internal/domain"
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"github.com/rfdetoni/mutate/internal/domain"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -62,20 +62,33 @@ func TestInstallDryRunNeverRunsSource(t *testing.T) {
 	}
 }
 
-func TestExplicitCrossDistroDependencyMapping(t *testing.T){
- deb:=createSampleDeb(t,"libc6")
- defer os.Remove(deb)
- mapping:=filepath.Join(t.TempDir(),"map.json")
- if err:=os.WriteFile(mapping,[]byte(`{"libc6":"glibc"}`),0600);err!=nil{t.Fatal(err)}
- ir,cleanup,err:=prepareConversionWithOptions(deb,"rpm",false,conversionOptions{DependencyMapPath:mapping})
- if err!=nil{t.Fatal(err)}
- defer cleanup()
- if len(ir.Metadata.Dependencies)!=1 || ir.Metadata.Dependencies[0]!="glibc"{t.Fatalf("unexpected dependencies: %v",ir.Metadata.Dependencies)}
- if ir.Format!=domain.FormatDEB{t.Fatal("source format lost")}
+func TestExplicitCrossDistroDependencyMapping(t *testing.T) {
+	deb := createSampleDeb(t, "libc6")
+	defer os.Remove(deb)
+	mapping := filepath.Join(t.TempDir(), "map.json")
+	if err := os.WriteFile(mapping, []byte(`{"libc6":"glibc"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ir, cleanup, err := prepareConversionWithOptions(deb, "rpm", false, conversionOptions{DependencyMapPath: mapping})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if len(ir.Metadata.Dependencies) != 1 || ir.Metadata.Dependencies[0] != "glibc" {
+		t.Fatalf("unexpected dependencies: %v", ir.Metadata.Dependencies)
+	}
+	if ir.Format != domain.FormatDEB {
+		t.Fatal("source format lost")
+	}
 }
-func TestCrossDistroDependencyMustBeMapped(t *testing.T){
- deb:=createSampleDeb(t,"libc6");defer os.Remove(deb)
- _,cleanup,err:=prepareConversionWithOptions(deb,"rpm",false,conversionOptions{})
- if cleanup!=nil{cleanup()}
- if err==nil || !strings.Contains(err.Error(),"--dependency-map"){t.Fatalf("expected mapping error; got %v",err)}
+func TestCrossDistroDependencyMustBeMapped(t *testing.T) {
+	deb := createSampleDeb(t, "libc6")
+	defer os.Remove(deb)
+	_, cleanup, err := prepareConversionWithOptions(deb, "rpm", false, conversionOptions{})
+	if cleanup != nil {
+		cleanup()
+	}
+	if err == nil || !strings.Contains(err.Error(), "--dependency-map") {
+		t.Fatalf("expected mapping error; got %v", err)
+	}
 }
