@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+ "strings"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/rfdetoni/mutate/internal/domain"
