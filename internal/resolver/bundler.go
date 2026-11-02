@@ -1,169 +1,92 @@
 package resolver
 
 import (
-	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
+ "fmt"
+ "io"
+ "os"
+ "path/filepath"
+ "strings"
 
-	"github.com/rfdetoni/mutate/internal/domain"
-	"github.com/rfdetoni/mutate/internal/elfanalyzer"
+ "github.com/rfdetoni/mutate/internal/domain"
+ "github.com/rfdetoni/mutate/internal/elfanalyzer"
 )
 
-// LibraryBundler handles isolation and bundling of libraries not available on host system.
-type LibraryBundler struct {
-	AppName string
+// LibraryBundler bundles explicitly supplied ELF shared objects.
+// It never claims to download unavailable libraries automatically.
+type LibraryBundler struct{ AppName string }
+func NewLibraryBundler(name string)*LibraryBundler{return &LibraryBundler{AppName:name}}
+
+// BundleMissingLibraries fails closed without an explicit trusted source.
+func (b *LibraryBundler) BundleMissingLibraries(ir *domain.PackageIR,missing []string,host Distro) error {
+ if len(missing)==0{return nil}
+ return fmt.Errorf("libraries %v are unavailable; provide --library-dir with matching ELF shared objects",missing)
 }
 
-func NewLibraryBundler(appName string) *LibraryBundler {
-	return &LibraryBundler{
-		AppName: appName,
-	}
-}
+func (b *LibraryBundler) BundleFromDir(ir *domain.PackageIR,missing []string,sourceDir string) error {
+ if len(missing)==0{return nil}
+ if sourceDir==""{return fmt.Errorf("missing --library-dir")}
+ if b.AppName=="" || strings.ContainsAny(b.AppName,"/\\\x00\n\r\t\"' ;$`") {return fmt.Errorf("invalid app name")}
+ libDir:="/usr/lib/"+b.AppName+"/lib"
+ binDir:="/usr/lib/"+b.AppName+"/bin"
 
-// BundleMissingLibraries isolates missing .so files into /usr/lib/<app-name>/lib and creates execution wrapper.
-func (b *LibraryBundler) BundleMissingLibraries(ir *domain.PackageIR, missingLibs []string, hostDistro Distro) error {
-	if len(missingLibs) == 0 {
-		return nil
-	}
-
-	appLibDir := fmt.Sprintf("/usr/lib/%s/lib", b.AppName)
-	stagingLibDir := filepath.Join(ir.StagingDir, appLibDir)
-	if err := os.MkdirAll(stagingLibDir, 0755); err != nil {
-		return fmt.Errorf("create bundle dir %s: %w", stagingLibDir, err)
-	}
-
-	// For each primary executable in /usr/bin or /bin, move real binary to /usr/lib/<app>/bin and place wrapper in /usr/bin
-	executables := b.findExecutables(ir)
-
-	for _, binPath := range executables {
-		relBin := strings.TrimPrefix(binPath, "/")
-		srcOnDisk := filepath.Join(ir.StagingDir, relBin)
-
-		internalAppBin := fmt.Sprintf("/usr/lib/%s/bin/%s", b.AppName, filepath.Base(binPath))
-		internalDiskPath := filepath.Join(ir.StagingDir, strings.TrimPrefix(internalAppBin, "/"))
-
-		if err := os.MkdirAll(filepath.Dir(internalDiskPath), 0755); err != nil {
-			return err
-		}
-
-		// Move real binary to internal location
-		if err := os.Rename(srcOnDisk, internalDiskPath); err != nil {
-			// If rename fails (e.g. cross-device or file entry missing on disk), copy
-			if err := copyFile(srcOnDisk, internalDiskPath); err != nil {
-				return fmt.Errorf("move executable %s to %s: %w", srcOnDisk, internalDiskPath, err)
-			}
-			os.Remove(srcOnDisk)
-		}
-
-		// Update IR files
-		entry := ir.Files[binPath]
-		entry.SourcePath = internalDiskPath
-		entry.DestinationPath = internalAppBin
-		ir.Files[internalAppBin] = entry
-
-		// Generate wrapper script at original binPath
-		wrapperOpts := elfanalyzer.WrapperOptions{
-			AppName:        b.AppName,
-			OriginalBin:    internalAppBin,
-			IsolatedLibDir: appLibDir,
-		}
-
-		// Check if musl is needed on glibc host
-		if entry.Elf != nil && entry.Elf.NeedsMusl && hostDistro != DistroAlpine {
-			wrapperOpts.UseMuslLoader = true
-			wrapperOpts.MuslLoaderPath = "/lib/ld-musl-x86_64.so.1"
-			// Ensure musl dependency is present
-			b.ensureMuslDependency(ir, hostDistro)
-		}
-
-		wrapperContent := elfanalyzer.GenerateWrapperScriptContent(wrapperOpts)
-		if err := os.WriteFile(srcOnDisk, []byte(wrapperContent), 0755); err != nil {
-			return fmt.Errorf("write wrapper script %s: %w", srcOnDisk, err)
-		}
-
-		ir.Files[binPath] = domain.FileEntry{
-			SourcePath:      srcOnDisk,
-			DestinationPath: binPath,
-			Mode:            0755,
-		}
-	}
-
-	return nil
-}
-
-func (b *LibraryBundler) findExecutables(ir *domain.PackageIR) []string {
-	var execs []string
-	for destPath, entry := range ir.Files {
-		if strings.HasPrefix(destPath, "/usr/bin/") || strings.HasPrefix(destPath, "/bin/") {
-			if !entry.IsDir && !entry.IsSymlink {
-				execs = append(execs, destPath)
-			}
-		}
-	}
-	return execs
-}
-
-func (b *LibraryBundler) ensureMuslDependency(ir *domain.PackageIR, hostDistro Distro) {
-	muslPkg := "musl"
-	switch hostDistro {
-	case DistroDebian:
-		muslPkg = "musl"
-	case DistroArch:
-		muslPkg = "musl"
-	case DistroFedora:
-		muslPkg = "musl-libc"
-	}
-
-	for _, dep := range ir.Metadata.Dependencies {
-		if dep == muslPkg {
-			return
-		}
-	}
-	ir.Metadata.Dependencies = append(ir.Metadata.Dependencies, muslPkg)
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	return err
-}
-
-// DownloadLibraryOptional allows fetching an isolated .so if an explicit remote URL is known.
-func DownloadLibraryOptional(targetPath, downloadURL string) error {
-	resp, err := http.Get(downloadURL)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status downloading lib: %d", resp.StatusCode)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-		return err
-	}
-
-	out, err := os.Create(targetPath)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-	return err
+ // Verify all libraries before mutating the package.
+ type provided struct{ name,source string; mode os.FileMode }
+ var libs []provided
+ for _,lib:=range missing {
+  if lib=="" || filepath.Base(lib)!=lib || strings.Contains(lib,"\\"){return fmt.Errorf("invalid library name %q",lib)}
+  path:=filepath.Join(sourceDir,lib)
+  st,err:=os.Lstat(path)
+  if err!=nil{return fmt.Errorf("missing library %s: %w",lib,err)}
+  if !st.Mode().IsRegular(){return fmt.Errorf("library must be a regular file: %q",path)}
+  info,err:=elfanalyzer.AnalyzeELF(path)
+  if err!=nil{return fmt.Errorf("invalid ELF library %s: %w",lib,err)}
+  if info.Soname!="" && info.Soname!=lib{return fmt.Errorf("SONAME %s does not satisfy %s",info.Soname,lib)}
+  for _,entry:=range ir.Files {
+   if entry.Elf!=nil && entry.Elf.Architecture!=info.Architecture {
+    return fmt.Errorf("architecture mismatch for %s: %s vs %s",lib,info.Architecture,entry.Elf.Architecture)
+   }
+  }
+  libs=append(libs,provided{lib,path,st.Mode().Perm()})
+ }
+ // Only real ELF executables should receive LD_LIBRARY_PATH wrappers.
+ var bins []string
+ seen:=make(map[string]bool)
+ for path,entry:=range ir.Files {
+  if (strings.HasPrefix(path,"/bin/")||strings.HasPrefix(path,"/usr/bin/")) && entry.Elf!=nil && !entry.IsSymlink {
+   basename:=filepath.Base(path)
+   if seen[basename]{return fmt.Errorf("duplicate executable name %q",basename)}
+   seen[basename]=true
+   if entry.Mode&os.ModeSetuid!=0 || entry.Mode&os.ModeSetgid!=0{return fmt.Errorf("cannot wrap privileged executable %s",path)}
+   bins=append(bins,path)
+  }
+ }
+ if len(bins)==0{return fmt.Errorf("no ELF executable to wrap for isolated libraries")}
+ if err:=os.MkdirAll(filepath.Join(ir.StagingDir,strings.TrimPrefix(libDir,"/")),0755);err!=nil{return err}
+ for _,lib:=range libs {
+  dest:=libDir+"/"+lib.name
+  disk:=filepath.Join(ir.StagingDir,strings.TrimPrefix(dest,"/"))
+  in,err:=os.Open(lib.source);if err!=nil{return err}
+  out,err:=os.OpenFile(disk,os.O_CREATE|os.O_EXCL|os.O_WRONLY,0600)
+  if err!=nil{in.Close();return err}
+  _,cpErr:=io.Copy(out,in)
+  cErr:=out.Close();in.Close()
+  if cpErr!=nil{return cpErr};if cErr!=nil{return cErr}
+  if err:=os.Chmod(disk,lib.mode);err!=nil{return err}
+  ir.Files[dest]=domain.FileEntry{SourcePath:disk,DestinationPath:dest,Mode:lib.mode}
+ }
+ for _,path:=range bins {
+  orig:=ir.Files[path]
+  binDest:=binDir+"/"+filepath.Base(path)
+  disk:=filepath.Join(ir.StagingDir,strings.TrimPrefix(binDest,"/"))
+  if err:=os.MkdirAll(filepath.Dir(disk),0755);err!=nil{return err}
+  if err:=os.Rename(orig.SourcePath,disk);err!=nil{return fmt.Errorf("move executable %s: %w",path,err)}
+  orig.SourcePath=disk;orig.DestinationPath=binDest
+  delete(ir.Files,path)
+  ir.Files[binDest]=orig
+  wrapper:=elfanalyzer.GenerateWrapperScriptContent(elfanalyzer.WrapperOptions{AppName:b.AppName,OriginalBin:binDest,IsolatedLibDir:libDir})
+  wrapperDisk:=filepath.Join(ir.StagingDir,strings.TrimPrefix(path,"/"))
+  if err:=os.WriteFile(wrapperDisk,[]byte(wrapper),0755);err!=nil{return err}
+  ir.Files[path]=domain.FileEntry{SourcePath:wrapperDisk,DestinationPath:path,Mode:0755}
+ }
+ return nil
 }

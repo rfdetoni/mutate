@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+ "regexp"
 	"strings"
 
 	"github.com/avast/apkparser"
@@ -57,12 +58,16 @@ func (u *AndroidUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pac
 	}
 
 	pkgName := manifest.Package
+ if pkgName!="" && !regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$`).MatchString(pkgName) {
+  return nil,fmt.Errorf("invalid Android package name %q",pkgName)
+ }
 	if pkgName == "" {
 		pkgName = "android-app"
 	}
 
 	appName := sanitizeAppName(pkgName)
 	appLabel := manifest.Application.Label
+ appLabel=strings.NewReplacer("\n"," ","\r"," ").Replace(appLabel)
 	if appLabel == "" {
 		appLabel = appName
 	}
@@ -182,8 +187,10 @@ func extractApkIcon(apkPath, outIconPath string) error {
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, rc)
-	return err
+	n,err:=io.Copy(out,io.LimitReader(rc,16<<20+1))
+ if err!=nil{return err}
+ if n>16<<20{return fmt.Errorf("APK icon exceeds 16 MiB")}
+ return nil
 }
 
 func generateWaydroidLauncher(packageName, apkPath string) string {

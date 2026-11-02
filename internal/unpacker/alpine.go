@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
+ "os"
 	"path/filepath"
 	"strings"
 
@@ -37,8 +37,7 @@ func (u *AlpineUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pack
 			break
 		}
 		if err != nil {
-			// If not a gzip stream anymore or trailing bytes, break
-			break
+			return nil, fmt.Errorf("invalid or truncated Alpine archive member: %w",err)
 		}
 		gzr.Multistream(false) // Handle each member individually
 
@@ -88,56 +87,9 @@ func (u *AlpineUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pack
 				// Signature file, skip
 				continue
 			}
-
-			if strings.HasPrefix(cleanName, "../") || cleanName == ".." {
-				return nil, fmt.Errorf("path traversal attempt in alpine apk: %s", hdr.Name)
-			}
-
-			destOnDisk := filepath.Join(stagingDir, cleanName)
-			destInHost := "/" + cleanName
-
-			fileInfo := hdr.FileInfo()
-			entry := domain.FileEntry{
-				SourcePath:      destOnDisk,
-				DestinationPath: destInHost,
-				Mode:            fileInfo.Mode(),
-				ModTime:         hdr.ModTime,
-				Owner:           hdr.Uname,
-				Group:           hdr.Gname,
-			}
-
-			switch hdr.Typeflag {
-			case tar.TypeDir:
-				entry.IsDir = true
-				if err := os.MkdirAll(destOnDisk, 0755); err != nil {
-					return nil, fmt.Errorf("mkdir %s: %w", destOnDisk, err)
-				}
-			case tar.TypeSymlink:
-				entry.IsSymlink = true
-				entry.SymlinkTarget = hdr.Linkname
-				if err := os.MkdirAll(filepath.Dir(destOnDisk), 0755); err != nil {
-					return nil, err
-				}
-				os.Remove(destOnDisk)
-				if err := os.Symlink(hdr.Linkname, destOnDisk); err != nil {
-					return nil, fmt.Errorf("symlink %s -> %s: %w", destOnDisk, hdr.Linkname, err)
-				}
-			case tar.TypeReg, tar.TypeRegA:
-				if err := os.MkdirAll(filepath.Dir(destOnDisk), 0755); err != nil {
-					return nil, err
-				}
-				outFile, err := os.OpenFile(destOnDisk, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fileInfo.Mode().Perm())
-				if err != nil {
-					return nil, fmt.Errorf("create file %s: %w", destOnDisk, err)
-				}
-				if _, err := io.Copy(outFile, tr); err != nil {
-					outFile.Close()
-					return nil, fmt.Errorf("write file %s: %w", destOnDisk, err)
-				}
-				outFile.Close()
-			}
-
-			ir.Files[destInHost] = entry
+  if hdr.Typeflag==tar.TypeDir && (cleanName=="." || cleanName=="/"){continue}
+  if hdr.Size>maxEntryBytes{return nil,fmt.Errorf("archive entry too large: %q",hdr.Name)}
+  if err:=extractArchiveEntry(stagingDir,ir,hdr.Name,hdr.Typeflag,hdr.Linkname,hdr.FileInfo().Mode(),hdr.ModTime,hdr.Uname,hdr.Gname,tr);err!=nil{return nil,fmt.Errorf("extract %q: %w",hdr.Name,err)}
 		}
 
 		gzr.Close()

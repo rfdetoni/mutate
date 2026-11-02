@@ -89,7 +89,7 @@ func DetectReader(ra io.ReaderAt, size int64) (domain.Format, error) {
 		if err == nil && isAndroid {
 			return domain.FormatAndroidAPK, nil
 		}
-		return domain.FormatTarball, nil
+		return domain.FormatUnknown, fmt.Errorf("generic ZIP archives are not source tarballs")
 	}
 
 	// 7. XZ tarball: FD 37 7A 58 5A 00

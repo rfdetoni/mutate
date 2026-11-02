@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+ "sort"
 	"strings"
 
 	"github.com/rfdetoni/mutate/internal/domain"
@@ -125,8 +126,7 @@ func AnalyzePackage(ir *domain.PackageIR) (*PackageAnalysisResult, error) {
 
 		elfInfo, err := AnalyzeELF(filePath)
 		if err != nil {
-			// Skip or record error
-			continue
+			return nil,fmt.Errorf("invalid ELF %s: %w",destPath,err)
 		}
 
 		result.TotalELFs++
@@ -157,5 +157,6 @@ func AnalyzePackage(ir *domain.PackageIR) (*PackageAnalysisResult, error) {
 		}
 	}
 
-	return result, nil
+ sort.Strings(result.ExternalLibraries)
+ return result,nil
 }

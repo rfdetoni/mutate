@@ -27,8 +27,8 @@ func TranspileScript(rawScript string, opts TranspileOptions) (string, error) {
 	file, err := parser.Parse(strings.NewReader(rawScript), "")
 	if err != nil {
 		// If script cannot be parsed as valid POSIX shell AST, return original script safely
-		return rawScript, nil
-	}
+		return "",fmt.Errorf("script is not valid shell and cannot safely be translated: %w",err)
+ }
 
 	syntax.Walk(file, func(node syntax.Node) bool {
 		call, ok := node.(*syntax.CallExpr)
@@ -95,10 +95,14 @@ func TranspileScript(rawScript string, opts TranspileOptions) (string, error) {
 
 // TranspilePackageScripts applies AST transpilation to all scripts in PackageIR.
 func TranspilePackageScripts(ir *domain.PackageIR, targetFormat domain.Format) error {
+ if targetFormat==domain.FormatUnknown{return fmt.Errorf("unsupported target script format")}
+ if ir.Format==domain.FormatArch && targetFormat!=domain.FormatArch && (ir.Scripts.PreInstall!=""||ir.Scripts.PostInstall!=""||ir.Scripts.PreRemove!=""||ir.Scripts.PostRemove!="") {
+  return fmt.Errorf("Arch .INSTALL hooks require lifecycle-aware translation; refusing unsafe conversion")
+ }
 	opts := TranspileOptions{
 		TargetFormat:    targetFormat,
-		RemoveLdconfig:  true,
-		UseSystemd:      true,
+		RemoveLdconfig:  false,
+  UseSystemd:      targetFormat != domain.FormatAlpineAPK,
 		AdaptUseraddDeb: (targetFormat == domain.FormatDEB),
 	}
 

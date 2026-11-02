@@ -139,3 +139,14 @@ go test -v ./...
 ## Licença
 
 Distribuído sob a licença GPL-3.0. Consulte o arquivo [LICENSE](LICENSE) para mais detalhes.
+
+
+## Segurança e limitações atuais
+
+- `inspect` não executa código-fonte nem scripts.
+- A compilação de tarballs requer `--allow-source-build` e **não é isolada por sandbox**. Execute apenas fontes confiáveis.
+- Bibliotecas ELF ausentes exigem arquivos fornecidos pelo usuário em `--library-dir /caminho/libs`; bibliotecas sem formato ELF, SONAME ou arquitetura compatível são rejeitadas.
+- Dependências entre distribuições e scripts de instalação sem conversão segura são rejeitados; o sistema não gera deliberadamente pacotes com dependências falsas.
+- AppImage é identificado, mas ainda não pode ser convertido. ZIP genérico também não é aceito como tarball.
+- `install --dry-run` informa o plano, sem compilar nem instalar.
+- Use Go 1.26.4 ou posterior, de acordo com o `go.mod`.

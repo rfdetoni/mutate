@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
+ "path/filepath"
+ "runtime"
 	"strings"
 
 	"github.com/rfdetoni/mutate/internal/domain"
@@ -87,25 +88,25 @@ func (u *SourceUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pack
 		Name:         pkgName,
 		Version:      "1.0.0",
 		Release:      "1",
-		Architecture: "amd64",
+		Architecture: runtime.GOARCH,
 		Description:  fmt.Sprintf("Compiled package from source (%s)", buildSys),
 		License:      "Unknown",
 	}
 
-	destDir := stagingDir
-	if err := u.CompileAndInstall(workDir, destDir, buildSys, pkgName); err != nil {
-		return nil, fmt.Errorf("compile source: %w", err)
-	}
+ // Parsing and inspection never compile or execute untrusted source code.
+ return ir,nil
+}
 
-	// Index generated files in staging directory
-	if err := indexStagingFiles(stagingDir, ir); err != nil {
-		return nil, fmt.Errorf("index compiled files: %w", err)
-	}
-
-	// Clean temporary build directory
-	os.RemoveAll(srcBuildDir)
-
-	return ir, nil
+// BuildSource requires explicit permission from the CLI. Source build scripts
+// execute on the host; callers must not invoke this for inspect or dry-run.
+func (u *SourceUnpacker) BuildSource(ir *domain.PackageIR) error {
+ srcDir:=filepath.Join(ir.StagingDir,".src_build")
+ workDir:=findRootWorkDir(srcDir)
+ sys:=u.DetectBuildSystem(workDir)
+ if sys==BuildSystemUnknown{return fmt.Errorf("unsupported source build system")}
+ if err:=u.CompileAndInstall(workDir,ir.StagingDir,sys,ir.Metadata.Name);err!=nil{return err}
+ if err:=os.RemoveAll(srcDir);err!=nil{return err}
+ return indexStagingFiles(ir.StagingDir,ir)
 }
 
 func (u *SourceUnpacker) CompileAndInstall(workDir, destDir string, buildSys BuildSystem, pkgName string) error {
@@ -149,6 +150,23 @@ func (u *SourceUnpacker) CompileAndInstall(workDir, destDir string, buildSys Bui
 		if out, err := cmd3.CombinedOutput(); err != nil {
 			return fmt.Errorf("cmake install failed: %s: %w", string(out), err)
 		}
+
+ case BuildSystemMeson:
+  buildDir:=filepath.Join(workDir,"build")
+  cmds:=[][]string{{"meson","setup",buildDir,"--prefix=/usr"},{"meson","compile","-C",buildDir},{"meson","install","-C",buildDir}}
+  for _,argv:=range cmds {
+   cmd:=exec.Command(argv[0],argv[1:]...)
+   cmd.Dir=workDir
+   cmd.Env=append(os.Environ(),"DESTDIR="+destDir)
+   if out,err:=cmd.CombinedOutput();err!=nil{return fmt.Errorf("%s failed: %s: %w",argv[0],out,err)}
+  }
+ case BuildSystemAutotools:
+  cmds:=[][]string{{"./configure","--prefix=/usr"},{"make"},{"make","install","DESTDIR="+destDir}}
+  for _,argv:=range cmds {
+   cmd:=exec.Command(argv[0],argv[1:]...)
+   cmd.Dir=workDir
+   if out,err:=cmd.CombinedOutput();err!=nil{return fmt.Errorf("%s failed: %s: %w",argv[0],out,err)}
+  }
 
 	case BuildSystemMake:
 		cmd1 := exec.Command("make")
@@ -207,10 +225,9 @@ func indexStagingFiles(stagingDir string, ir *domain.PackageIR) error {
 	return filepath.Walk(stagingDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
-		}
-		if path == stagingDir || strings.HasPrefix(path, filepath.Join(stagingDir, ".src_build")) {
-			return nil
-		}
+		} 
+  if path==stagingDir{return nil}
+  if path==filepath.Join(stagingDir,".src_build"){return filepath.SkipDir}
 
 		rel, err := filepath.Rel(stagingDir, path)
 		if err != nil {

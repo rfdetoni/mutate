@@ -1,12 +1,11 @@
 package unpacker
 
 import (
+ "archive/tar"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/cavaliergopher/cpio"
 	"github.com/cavaliergopher/rpm"
@@ -86,63 +85,15 @@ func (u *RpmUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Package
 		if err != nil {
 			return nil, fmt.Errorf("read cpio header: %w", err)
 		}
-
-		cleanName := filepath.Clean(hdr.Name)
-		if strings.HasPrefix(cleanName, ".") {
-			cleanName = strings.TrimPrefix(cleanName, ".")
-		}
-		if strings.HasPrefix(cleanName, "/") {
-			cleanName = strings.TrimPrefix(cleanName, "/")
-		}
-		if strings.HasPrefix(cleanName, "../") || cleanName == ".." {
-			return nil, fmt.Errorf("path traversal attempt in rpm cpio: %s", hdr.Name)
-		}
-
-		destOnDisk := filepath.Join(stagingDir, cleanName)
-		destInHost := "/" + cleanName
-
-		entry := domain.FileEntry{
-			SourcePath:      destOnDisk,
-			DestinationPath: destInHost,
-			Mode:            os.FileMode(hdr.Mode & 0777),
-			ModTime:         hdr.ModTime,
-		}
-
-		fileType := hdr.Mode & 0170000
-		isDir := fileType == 0040000
-		isSymlink := fileType == 0120000 && hdr.Linkname != ""
-
-		if isDir {
-			entry.IsDir = true
-			if err := os.MkdirAll(destOnDisk, 0755); err != nil {
-				return nil, fmt.Errorf("mkdir %s: %w", destOnDisk, err)
-			}
-		} else if isSymlink {
-			entry.IsSymlink = true
-			entry.SymlinkTarget = hdr.Linkname
-			if err := os.MkdirAll(filepath.Dir(destOnDisk), 0755); err != nil {
-				return nil, err
-			}
-			os.Remove(destOnDisk)
-			if err := os.Symlink(hdr.Linkname, destOnDisk); err != nil {
-				return nil, fmt.Errorf("symlink %s -> %s: %w", destOnDisk, hdr.Linkname, err)
-			}
-		} else {
-			if err := os.MkdirAll(filepath.Dir(destOnDisk), 0755); err != nil {
-				return nil, err
-			}
-			outFile, err := os.OpenFile(destOnDisk, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode&0777))
-			if err != nil {
-				return nil, fmt.Errorf("create file %s: %w", destOnDisk, err)
-			}
-			if _, err := io.Copy(outFile, cpioReader); err != nil {
-				outFile.Close()
-				return nil, fmt.Errorf("write cpio file %s: %w", destOnDisk, err)
-			}
-			outFile.Close()
-		}
-
-		ir.Files[destInHost] = entry
+  fileType:=hdr.Mode & 0170000
+  var kind byte
+  switch fileType {
+  case 0040000:kind=tar.TypeDir
+  case 0120000:kind=tar.TypeSymlink
+  case 0100000,0:kind=tar.TypeReg
+  default:return nil,fmt.Errorf("unsupported rpm cpio entry %q (mode %o)",hdr.Name,hdr.Mode)
+  }
+  if err:=extractArchiveEntry(stagingDir,ir,hdr.Name,kind,hdr.Linkname,os.FileMode(hdr.Mode&07777),hdr.ModTime,"","",cpioReader);err!=nil{return nil,fmt.Errorf("extract rpm entry %q: %w",hdr.Name,err)}
 	}
 
 	return ir, nil

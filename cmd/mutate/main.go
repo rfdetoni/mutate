@@ -9,10 +9,8 @@ import (
 	"github.com/rfdetoni/mutate/internal/detector"
 	"github.com/rfdetoni/mutate/internal/domain"
 	"github.com/rfdetoni/mutate/internal/elfanalyzer"
-	"github.com/rfdetoni/mutate/internal/fhs"
 	"github.com/rfdetoni/mutate/internal/packager"
 	"github.com/rfdetoni/mutate/internal/resolver"
-	"github.com/rfdetoni/mutate/internal/scripts"
 	"github.com/rfdetoni/mutate/internal/unpacker"
 	"github.com/spf13/cobra"
 )
@@ -137,205 +135,73 @@ func newInspectCmd() *cobra.Command {
 }
 
 func newBuildCmd() *cobra.Command {
-	var targetFormat string
-	var outputPath string
-
-	cmd := &cobra.Command{
-		Use:   "build <package-file> --to <deb|rpm|arch|apk> [-o output]",
-		Short: "Transpile a package to another native Linux format without installing",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			srcFile := args[0]
-
-			if targetFormat == "" {
-				return fmt.Errorf("--to format flag is required (e.g. --to deb, --to rpm, --to arch, --to apk)")
-			}
-
-			format, err := detector.DetectFile(srcFile)
-			if err != nil {
-				return fmt.Errorf("detect format: %w", err)
-			}
-
-			stagingDir, err := os.MkdirTemp("", "mutate-build-*")
-			if err != nil {
-				return err
-			}
-			defer os.RemoveAll(stagingDir)
-
-			u, err := getUnpackerForFormat(format)
-			if err != nil {
-				return err
-			}
-
-			fmt.Printf("[1/5] Unpacking %s (%s)...\n", srcFile, format)
-			ir, err := u.Unpack(srcFile, stagingDir)
-			if err != nil {
-				return fmt.Errorf("unpack: %w", err)
-			}
-
-			fmt.Println("[2/5] Analyzing ELF binaries & resolving dynamic dependencies...")
-			analysis, err := elfanalyzer.AnalyzePackage(ir)
-			if err != nil {
-				return fmt.Errorf("elf analysis: %w", err)
-			}
-
-			res := resolver.NewAutoResolver()
-			var missingLibs []string
-			var hostDeps []string
-			for _, lib := range analysis.ExternalLibraries {
-				pkg, err := res.Resolve(lib)
-				if err != nil {
-					missingLibs = append(missingLibs, lib)
-				} else {
-					hostDeps = append(hostDeps, pkg)
-				}
-			}
-
-			if len(missingLibs) > 0 {
-				fmt.Printf("      Isolating %d missing libraries via bundler wrapper...\n", len(missingLibs))
-				bundler := resolver.NewLibraryBundler(ir.Metadata.Name)
-				if err := bundler.BundleMissingLibraries(ir, missingLibs, res.HostDistro()); err != nil {
-					return fmt.Errorf("bundle missing libs: %w", err)
-				}
-			}
-
-			// Add discovered host dependencies to package metadata
-			for _, dep := range hostDeps {
-				ir.Metadata.Dependencies = append(ir.Metadata.Dependencies, dep)
-			}
-
-			fmt.Println("[3/5] Normalizing FHS library layout & configs...")
-			if err := fhs.NormalizePackage(ir, res.HostDistro()); err != nil {
-				return fmt.Errorf("fhs normalize: %w", err)
-			}
-
-			fmt.Println("[4/5] Transpiling maintainer scripts via AST...")
-			destDomainFmt := parseDomainFormat(targetFormat)
-			if err := scripts.TranspilePackageScripts(ir, destDomainFmt); err != nil {
-				return fmt.Errorf("transpile scripts: %w", err)
-			}
-
-			if outputPath == "" {
-				ext := targetFormat
-				if ext == "arch" {
-					ext = "pkg.tar.zst"
-				}
-				outputPath = fmt.Sprintf("%s_%s-%s_%s.%s",
-					ir.Metadata.Name, ir.Metadata.Version, ir.Metadata.Release, ir.Metadata.Architecture, ext)
-			}
-
-			fmt.Printf("[5/5] Building native %s package -> %s\n", targetFormat, outputPath)
-			if err := packager.BuildPackageToFile(ir, targetFormat, outputPath); err != nil {
-				return fmt.Errorf("build package: %w", err)
-			}
-
-			fmt.Printf("\n✓ Transpilation complete! Output saved to: %s\n", outputPath)
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&targetFormat, "to", "", "Target package format (deb, rpm, arch, apk)")
-	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Output package file path")
-	cmd.MarkFlagRequired("to")
-
-	return cmd
+ var targetFormat, outputPath string
+ var allowSourceBuild bool
+ var libraryDir string
+ cmd:=&cobra.Command{
+  Use:"build <package-file> --to <deb|rpm|arch|apk> [-o output]",
+  Short:"Convert a package to a native Linux package",
+  Args:cobra.ExactArgs(1),
+  RunE:func(cmd *cobra.Command,args []string)error {
+   ir,cleanup,err:=prepareConversion(args[0],targetFormat,allowSourceBuild,libraryDir)
+   if err!=nil{return err}
+   defer cleanup()
+   out:=outputPath
+   if out=="" {
+    ext:=targetFormat
+    if ext=="arch"{ext="pkg.tar.zst"}
+    out=fmt.Sprintf("%s_%s-%s_%s.%s",ir.Metadata.Name,ir.Metadata.Version,ir.Metadata.Release,ir.Metadata.Architecture,ext)
+   }
+   if err:=packager.BuildPackageToFile(ir,targetFormat,out);err!=nil{return err}
+   fmt.Printf("Package created: %s\n",out)
+   return nil
+  },
+ }
+ cmd.Flags().StringVar(&targetFormat,"to","","Target format (deb, rpm, arch, apk)")
+ cmd.Flags().StringVarP(&outputPath,"output","o","","Output package path")
+ cmd.Flags().BoolVar(&allowSourceBuild,"allow-source-build",false,"Execute source build tools on host (UNSANDBOXED)")
+ cmd.Flags().StringVar(&libraryDir,"library-dir","","Directory of explicitly supplied ELF libraries to isolate")
+ _=cmd.MarkFlagRequired("to")
+ return cmd
 }
 
 func newInstallCmd() *cobra.Command {
-	var dryRun bool
-
-	cmd := &cobra.Command{
-		Use:   "install <package-file> [--dry-run]",
-		Short: "Transpile a package to current host format and install it natively",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			srcFile := args[0]
-
-			hostDistro := resolver.DetectHostDistro()
-			var targetFormat string
-			switch hostDistro {
-			case resolver.DistroDebian:
-				targetFormat = "deb"
-			case resolver.DistroArch:
-				targetFormat = "arch"
-			case resolver.DistroFedora:
-				targetFormat = "rpm"
-			case resolver.DistroAlpine:
-				targetFormat = "apk"
-			default:
-				targetFormat = "deb"
-			}
-
-			fmt.Printf("Host distro is %s -> compiling to native %s\n", hostDistro, targetFormat)
-
-			tmpPkg := filepath.Join(os.TempDir(), fmt.Sprintf("mutate-install-%d.%s", os.Getpid(), targetFormat))
-			defer os.Remove(tmpPkg)
-
-			// Run build logic into tmpPkg
-			format, err := detector.DetectFile(srcFile)
-			if err != nil {
-				return fmt.Errorf("detect format: %w", err)
-			}
-
-			stagingDir, err := os.MkdirTemp("", "mutate-staging-*")
-			if err != nil {
-				return err
-			}
-			defer os.RemoveAll(stagingDir)
-
-			u, err := getUnpackerForFormat(format)
-			if err != nil {
-				return err
-			}
-
-			ir, err := u.Unpack(srcFile, stagingDir)
-			if err != nil {
-				return fmt.Errorf("unpack: %w", err)
-			}
-
-			analysis, err := elfanalyzer.AnalyzePackage(ir)
-			if err != nil {
-				return fmt.Errorf("elf analysis: %w", err)
-			}
-
-			res := resolver.NewAutoResolver()
-			var missingLibs []string
-			for _, lib := range analysis.ExternalLibraries {
-				pkg, err := res.Resolve(lib)
-				if err != nil {
-					missingLibs = append(missingLibs, lib)
-				} else {
-					ir.Metadata.Dependencies = append(ir.Metadata.Dependencies, pkg)
-				}
-			}
-
-			if len(missingLibs) > 0 {
-				bundler := resolver.NewLibraryBundler(ir.Metadata.Name)
-				if err := bundler.BundleMissingLibraries(ir, missingLibs, hostDistro); err != nil {
-					return fmt.Errorf("bundle missing libs: %w", err)
-				}
-			}
-
-			if err := fhs.NormalizePackage(ir, hostDistro); err != nil {
-				return fmt.Errorf("fhs normalize: %w", err)
-			}
-
-			destDomainFmt := parseDomainFormat(targetFormat)
-			if err := scripts.TranspilePackageScripts(ir, destDomainFmt); err != nil {
-				return fmt.Errorf("transpile scripts: %w", err)
-			}
-
-			if err := packager.BuildPackageToFile(ir, targetFormat, tmpPkg); err != nil {
-				return fmt.Errorf("build package: %w", err)
-			}
-
-			fmt.Printf("Installing %s...\n", tmpPkg)
-			return packager.InstallPackage(tmpPkg, hostDistro, dryRun)
-		},
-	}
-
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Simulate installation without modifying host")
-	return cmd
+ var dryRun,allowSourceBuild bool
+ var libraryDir string
+ cmd:=&cobra.Command{
+  Use:"install <package-file> [--dry-run]",
+  Short:"Convert to host format and install with native package manager",
+  Args:cobra.ExactArgs(1),
+  RunE:func(cmd *cobra.Command,args []string)error {
+   host:=resolver.DetectHostDistro()
+   var target string
+   switch host {
+   case resolver.DistroDebian:target="deb"
+   case resolver.DistroFedora:target="rpm"
+   case resolver.DistroArch:target="arch"
+   case resolver.DistroAlpine:target="apk"
+   default:return fmt.Errorf("unsupported host distribution %q",host)
+   }
+   src:=args[0]
+   if dryRun{
+    sourceFmt,err:=detector.DetectFile(src)
+    if err!=nil{return err}
+    fmt.Printf("[dry-run] Would convert %s (%s) to %s and request installation; no source build, packaging, or installation executed\n",src,sourceFmt,target)
+    return nil
+   }
+   ir,cleanup,err:=prepareConversion(src,target,allowSourceBuild,libraryDir)
+   if err!=nil{return err}
+   defer cleanup()
+   // Unique secure temporary directory; never derive a path from PID alone.
+   out:=filepath.Join(ir.StagingDir,"mutate-output."+map[string]string{"arch":"pkg.tar.zst","deb":"deb","rpm":"rpm","apk":"apk"}[target])
+   if err:=packager.BuildPackageToFile(ir,target,out);err!=nil{return err}
+   return packager.InstallPackage(out,host,false)
+  },
+ }
+ cmd.Flags().BoolVar(&dryRun,"dry-run",false,"Print planned operation without executing conversion or install")
+ cmd.Flags().BoolVar(&allowSourceBuild,"allow-source-build",false,"Execute source build tools on host (UNSANDBOXED)")
+ cmd.Flags().StringVar(&libraryDir,"library-dir","","Directory of explicitly supplied ELF libraries to isolate")
+ return cmd
 }
 
 func parseDomainFormat(s string) domain.Format {
