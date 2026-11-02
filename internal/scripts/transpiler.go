@@ -30,13 +30,56 @@ func TranspileScript(rawScript string, opts TranspileOptions) (string, error) {
 		return "", fmt.Errorf("script is not valid shell and cannot safely be translated: %w", err)
 	}
 
-	syntax.Walk(file, func(node syntax.Node) bool {
+ var translationError error
+ syntax.Walk(file, func(node syntax.Node) bool {
 		call, ok := node.(*syntax.CallExpr)
 		if !ok || len(call.Args) == 0 {
 			return true
 		}
 
 		cmd := call.Args[0].Lit()
+  if opts.TargetFormat==domain.FormatAlpineAPK {
+   switch cmd {
+   case "systemctl":
+    if len(call.Args)!=3 || call.Args[1].Lit()=="" || call.Args[2].Lit()==""{
+     translationError=fmt.Errorf("unsupported systemctl invocation for Alpine")
+     return false
+    }
+    action,unit:=call.Args[1].Lit(),call.Args[2].Lit()
+    switch action{
+    case "start","stop","restart","reload","status":call.Args=[]*syntax.Word{makeWord("rc-service"),makeWord(unit),makeWord(action)}
+    case "enable":call.Args=[]*syntax.Word{makeWord("rc-update"),makeWord("add"),makeWord(unit),makeWord("default")}
+    case "disable":call.Args=[]*syntax.Word{makeWord("rc-update"),makeWord("del"),makeWord(unit),makeWord("default")}
+    default:translationError=fmt.Errorf("unsupported systemctl action %q on Alpine",action)
+    }
+    return false
+   case "service":
+    if len(call.Args)!=3 || call.Args[1].Lit()=="" || call.Args[2].Lit()==""{translationError=fmt.Errorf("unsupported service command");return false}
+    call.Args[0]=makeWord("rc-service")
+    return false
+   case "chkconfig":
+    if len(call.Args)!=3 || call.Args[1].Lit()=="" || call.Args[2].Lit()==""{translationError=fmt.Errorf("unsupported chkconfig");return false}
+    action:=call.Args[2].Lit()
+    if action!="on"&&action!="off"{translationError=fmt.Errorf("unsupported chkconfig action %q",action);return false}
+    op:="add";if action=="off"{op="del"}
+    call.Args=[]*syntax.Word{makeWord("rc-update"),makeWord(op),call.Args[1],makeWord("default")}
+    return false
+   }
+  } else if opts.UseSystemd{
+   switch cmd{
+   case "rc-service":
+    if len(call.Args)!=3 || call.Args[1].Lit()=="" || call.Args[2].Lit()==""{translationError=fmt.Errorf("unsupported rc-service");return false}
+    call.Args=[]*syntax.Word{makeWord("systemctl"),call.Args[2],call.Args[1]}
+    return false
+   case "rc-update":
+    if len(call.Args)<3 || call.Args[1].Lit()=="" || call.Args[2].Lit()==""{translationError=fmt.Errorf("unsupported rc-update");return false}
+    action:=call.Args[1].Lit()
+    op:="enable"
+    if action=="del"{op="disable"}else if action!="add"{translationError=fmt.Errorf("unsupported rc-update action %q",action);return false}
+    call.Args=[]*syntax.Word{makeWord("systemctl"),makeWord(op),call.Args[2]}
+    return false
+   }
+  }
 
 		// Rule 1: Replace legacy `service <unit> <action>` with `systemctl <action> <unit>`
 		if opts.UseSystemd && cmd == "service" && len(call.Args) >= 3 {
@@ -84,8 +127,9 @@ func TranspileScript(rawScript string, opts TranspileOptions) (string, error) {
 		return true
 	})
 
-	var buf bytes.Buffer
-	printer := syntax.NewPrinter()
+ if translationError!=nil{return "",translationError}
+ var buf bytes.Buffer
+ printer := syntax.NewPrinter()
 	if err := printer.Print(&buf, file); err != nil {
 		return "", fmt.Errorf("print transpiled script AST: %w", err)
 	}
