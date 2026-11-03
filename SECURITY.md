@@ -33,3 +33,10 @@ Report security issues privately to the repository owner rather than filing a pu
 ## Runtime prerequisite checks
 
 The runtime preflight reports whether Waydroid is available on PATH or whether common legacy FUSE 2 libraries and `/dev/fuse` can be observed. It does not execute AppImages or APKs, install dependencies, probe an Android container or guarantee that the destination machine supports the artifact. In particular, an AppImage Type 2 may use a newer runtime with built-in FUSE 3 support; the absence of a FUSE 2 library is advisory, not a hard failure.
+
+## Curl installer
+
+- `install.sh` is POSIX shell, supports user-local installs, and does not require running an entire remote script as root. System installs use the caller's existing write access or noninteractive sudo only for target installation.
+- Official GitHub release archive downloads require a matching SHA-256 manifest; mismatches stop the installation. Without a release, the installer downloads source from the official repository and compiles. The upstream source ref defaults to the mutable `main` branch; use an audited checkout/ref when pinning is required.
+- If a compatible Go toolchain is absent, the installer downloads a toolchain for supported Linux architectures from `go.dev`, then checks its SHA-256 against the official `go.dev/dl/?mode=json&include=all` metadata before unpacking. This is a temporary installation under a private directory, not a system-level Go install.
+- A fetched source build downloads Go modules using the standard Go module checksum mechanisms. Review remote shell scripts and upstream sources before execution. The installer never automatically installs packages through a distro's package manager.

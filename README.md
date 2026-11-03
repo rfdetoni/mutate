@@ -50,12 +50,31 @@ M.U.T.A.T.E. inspects ELF binaries, resolves missing shared libraries (`.so`) di
 
 ## Installation
 
-### Using the Install Script
-```bash
-git clone https://github.com/rfdetoni/mutate.git
-cd mutate
-./install.sh
+### Universal Linux install (curl)
+
+Works on Debian/Ubuntu, Fedora/RHEL, Arch, Alpine (musl), and other Linux distributions with POSIX `sh`, `tar`, `curl` or `wget` and a supported Go architecture:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh
 ```
+
+The default installation path is `~/.local/bin` for normal users or `/usr/local/bin` when already writable/root. Add `~/.local/bin` to `PATH` if necessary. The installer detects Linux CPU architecture, uses a SHA-256-verified prebuilt GitHub release if available and otherwise downloads the repository source archive and builds it. When Go >= the version in `go.mod` is absent, it can download a **temporary, SHA-256-verified official Go toolchain** without modifying the system toolchain. The source build requires network access to Go modules.
+
+```sh
+# Native system installation with noninteractive sudo privileges
+curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --system
+
+# Force compilation rather than using a release
+curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --source
+
+# Custom location
+curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --dir "$HOME/bin"
+
+# Force a tagged binary release (fails if the asset is unavailable)
+curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --release --version v1.0.0
+```
+
+`wget -qO- https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh` also works. Run as a regular user; **do not pipe network scripts to `sudo sh`**. `--system` requests privilege only for the final copy when passwordless sudo is configured. Until a tagged binary release is published, the default automatically uses verified Go bootstrap and compilation from source if needed. For auditability, download and review `install.sh` before running it.
 
 ### From Source (Go 1.26.4+)
 ```bash

@@ -1,7 +1,7 @@
 name: Mutate validation
 on:
   push:
-    branches: [feat/runtime-prerequisites-warning]
+    branches: [feat/universal-curl-installer]
   workflow_dispatch:
 permissions:
   contents: write
@@ -23,6 +23,11 @@ jobs:
           sudo apt-get install -y -qq libarchive-tools genisoimage
       - name: Format Go files
         run: gofmt -w cmd internal
+      - name: Verify POSIX installer and offline install paths
+        run: |
+          sh -n install.sh
+          dash -n install.sh
+          sh tests/install_test.sh
       - name: Build and test
         run: |
           CGO_ENABLED=0 go build ./...
