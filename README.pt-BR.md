@@ -235,4 +235,15 @@ Para testar os pacotes reais sob demanda, baixe primeiro as amostras e execute `
 
 Os comandos `inspect`, `build` e `install` usam a mesma seleção de formato e a política `unpacker.Prepare`: preservam artefatos portáteis por padrão e aplicam `--extract` somente a AppImages. Nome e versão são validados **antes** de gerar caminhos e atalhos, tanto para AppImages preservados quanto extraídos.
 
-O `PackageIR` separa `SourcePath` (origem) de `DestinationPath` (destino no pacote). Um arquivo original externo ao staging nunca deve ser movido ou alterado pela normalização FHS. Quando precisa de relocação ou alteração de configuração, o M.U.T.A.T.E. usa **copy-on-write** e modifica exclusivamente a cópia temporária. A geração do pacote valida caminhos e consistência de todas as entradas, independentemente do formato de origem.
+O `PackageIR` separa `SourcePath` (origem) de `DestinationPath` (destino no pacote). Um arquivo original externo ao staging nunca deve ser movido ou alterado pela normalização FHS. A relocação de bibliotecas altera apenas o destino lógico no pacote, sem mover nem copiar o arquivo de origem. O **copy-on-write** é reservado aos arquivos de configuração cujo conteúdo realmente precisa ser alterado. A geração do pacote valida caminhos e consistência de todas as entradas, independentemente do formato de origem.
+
+### Medição e comparação de desempenho
+
+Ative `MUTATE_TIMINGS=1` para mostrar os tempos de cada fase no stderr, sem poluir a saída JSON:
+
+```sh
+MUTATE_TIMINGS=1 mutate build pacote.rpm --to deb --dependency-map mapeamento.json
+MUTATE_TIMINGS=1 mutate inspect pacote.deb
+```
+
+O modo padrão não coleta essas medições. Para comparar versões em pacotes reais usando p50/p95 e execuções alternadas, utilize `benchmarks/compare.py` (instruções em `benchmarks/README.md`). A melhoria elimina I/O desnecessário na normalização FHS; não altera compressão do pacote final. Verificações de FUSE/Waydroid agora são realizadas apenas para AppImage e APK Android, e APKs preservados não passam por análise ELF de Linux.

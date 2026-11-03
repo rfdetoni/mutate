@@ -50,6 +50,6 @@ The runtime preflight reports whether Waydroid is available on PATH or whether c
 
 ## Staging ownership and package representation
 
-- `SourcePath` can point to an immutable original outside the private staging directory. FHS relocation and configuration rewriting only mutate staging-owned files. External files are copied on demand before any change.
+- `SourcePath` can point to an immutable original outside the private staging directory. FHS library relocation only changes destination metadata and never moves or rewrites the payload source. For configuration content changes, external files are copied on demand into private staging and only that private copy is rewritten. Symlink sources are rejected for relocated regular files.
 - The package builder checks intermediate representation destinations and entry consistency before passing them to the native packager.
 - These checks do not sandbox an installed application's runtime, and they do not replace safe handling of untrusted source archives.

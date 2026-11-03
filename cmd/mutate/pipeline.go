@@ -82,6 +82,7 @@ func readDependencyMap(pathOrJSON string) (map[string]string, error) {
 // prepareConversionWithOptions fails closed when package dependencies, ABI,
 // or lifecycle transformations lack a verified target mapping.
 func prepareConversionWithOptions(src, target string, allowSourceBuild bool, opts conversionOptions) (*domain.PackageIR, func(), error) {
+	timer := startPhaseTimer("prepare")
 	targetDistro, targetFormat, err := distroForFormat(target)
 	if err != nil {
 		return nil, nil, err
@@ -94,6 +95,7 @@ func prepareConversionWithOptions(src, target string, allowSourceBuild bool, opt
 	if err != nil {
 		return nil, nil, err
 	}
+	timer.mark("detect")
 	stage, err := os.MkdirTemp("", "mutate-convert-*")
 	if err != nil {
 		return nil, nil, err
@@ -106,6 +108,7 @@ func prepareConversionWithOptions(src, target string, allowSourceBuild bool, opt
 	if err != nil {
 		return fail(fmt.Errorf("prepare package: %w", err))
 	}
+	timer.mark("unpack")
 	if err := domain.ValidatePackageIR(ir); err != nil {
 		return fail(fmt.Errorf("validate package: %w", err))
 	}
@@ -124,13 +127,14 @@ func prepareConversionWithOptions(src, target string, allowSourceBuild bool, opt
 	// Do not interpret ELF imports of the embedded runtime as dependencies of
 	// the target package; its external FUSE/runtime needs remain with the user.
 	var libraries []string
-	if format != domain.FormatAppImage || opts.Extract {
+	if (format != domain.FormatAppImage || opts.Extract) && format != domain.FormatAndroidAPK {
 		analysis, err := elfanalyzer.AnalyzePackage(ir)
 		if err != nil {
 			return fail(err)
 		}
 		libraries = analysis.ExternalLibraries
 	}
+	timer.mark("elf")
 	host := resolver.DetectHostDistro()
 	crossFormat := format != targetFormat && format != domain.FormatAppImage && format != domain.FormatTarball && format != domain.FormatAndroidAPK
 	// Cross-format package metadata is not assumed to be equivalent.
@@ -192,11 +196,14 @@ func prepareConversionWithOptions(src, target string, allowSourceBuild bool, opt
 			return fail(fmt.Errorf("bundle target libraries: %w", err))
 		}
 	}
+	timer.mark("dependencies")
 	if err := fhs.NormalizePackage(ir, targetDistro); err != nil {
 		return fail(fmt.Errorf("normalize FHS: %w", err))
 	}
+	timer.mark("fhs")
 	if err := scripts.TranspilePackageScripts(ir, targetFormat); err != nil {
 		return fail(fmt.Errorf("translate scripts: %w", err))
 	}
+	timer.mark("scripts")
 	return ir, cleanup, nil
 }

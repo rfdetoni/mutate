@@ -188,103 +188,87 @@ func isTextConfig(path string) bool {
 		strings.HasSuffix(path, ".pc")
 }
 
-// NormalizePackage changes package destinations, never the caller's originals.
-// It detects path collisions before touching staging files.
+// NormalizePackage relocates destination paths without moving payload bytes.
+// nFPM already reads each FileEntry.SourcePath, so copying/renaming large
+// libraries solely to change their install destination wastes disk I/O.
+// Only text configuration files that reference changed paths are rewritten
+// using staging-owned copies when necessary.
 func NormalizePackage(ir *domain.PackageIR, targetDistro resolver.Distro) error {
 	if err := domain.ValidatePackageIR(ir); err != nil {
 		return fmt.Errorf("validate before FHS normalization: %w", err)
 	}
-	target := GetTargetFHS(targetDistro, ir.Metadata.Architecture)
+
+	libDir := GetTargetFHS(targetDistro, ir.Metadata.Architecture).PrimaryLibDir
+	// Most native/portable packages need no relocation. Retain their
+	// validated representation without allocating a second file map.
+	hasRelocation := false
+	for dest := range ir.Files {
+		if relocatedLibraryPath(dest, libDir) != dest {
+			hasRelocation = true
+			break
+		}
+	}
+	if !hasRelocation {
+		return nil
+	}
+
 	newFiles := make(map[string]domain.FileEntry, len(ir.Files))
-	sourceDest := make(map[string]string, len(ir.Files))
 	replacements := make(map[string]string)
 	for dest, entry := range ir.Files {
-		newDest := relocatedLibraryPath(dest, target.PrimaryLibDir)
-		if prev, ok := sourceDest[newDest]; ok {
-			return fmt.Errorf("FHS normalization collision at %s (%s and %s)", newDest, prev, dest)
+		newDest := relocatedLibraryPath(dest, libDir)
+		if _, exists := newFiles[newDest]; exists {
+			return fmt.Errorf("FHS normalization collision at %s", newDest)
 		}
-		sourceDest[newDest] = dest
 		if newDest != dest {
+			if !entry.IsSymlink && !entry.IsDir {
+				source := stageSource(ir, entry, dest)
+				if source == "" {
+					return fmt.Errorf("file %q has no source", dest)
+				}
+				// Check the source before changing the package representation.
+				// Never follow a symlink when relocating regular files.
+				st, err := os.Lstat(source)
+				if err != nil {
+					return fmt.Errorf("stat FHS source %q: %w", dest, err)
+				}
+				if !st.Mode().IsRegular() {
+					return fmt.Errorf("FHS source is not a regular file: %q", source)
+				}
+				// An implicit staging source must become explicit because the
+				// staging pathname itself does not change when its destination does.
+				entry.SourcePath = source
+			}
+			entry.DestinationPath = newDest
 			replacements[dest] = newDest
 			for _, prefix := range []string{
 				"/usr/lib64/", "/usr/lib/x86_64-linux-gnu/", "/usr/lib/aarch64-linux-gnu/",
 			} {
 				if strings.HasPrefix(dest, prefix) {
-					replacements[prefix] = target.PrimaryLibDir + "/"
+					replacements[prefix] = libDir + "/"
 					break
 				}
 			}
 		}
-		entry.DestinationPath = newDest
 		newFiles[newDest] = entry
 	}
-	// Deterministic order prevents a file relocation from masking a later
-	// collision and makes failures reproducible.
-	keys := make([]string, 0, len(ir.Files))
-	for dest := range ir.Files {
-		keys = append(keys, dest)
+
+	// Rewriting is the only operation that needs a private physical copy.
+	// Keys are sorted to ensure deterministic output for a given package.
+	dests := make([]string, 0, len(newFiles))
+	for dest := range newFiles {
+		dests = append(dests, dest)
 	}
-	sort.Strings(keys)
-	for _, dest := range keys {
-		newDest := relocatedLibraryPath(dest, target.PrimaryLibDir)
-		if newDest == dest {
+	sort.Strings(dests)
+	for _, dest := range dests {
+		entry := newFiles[dest]
+		if entry.IsDir || entry.IsSymlink || !isTextConfig(dest) {
 			continue
 		}
-		entry := newFiles[newDest]
-		if !entry.IsSymlink && !entry.IsDir {
-			if ir.StagingDir == "" {
-				return fmt.Errorf("cannot relocate %q without staging directory", dest)
-			}
-			source := stageSource(ir, entry, dest)
-			if source == "" {
-				return fmt.Errorf("file %q has no source", dest)
-			}
-			newSource := filepath.Join(ir.StagingDir, strings.TrimPrefix(newDest, "/"))
-			if source != newSource {
-				if err := os.MkdirAll(filepath.Dir(newSource), 0755); err != nil {
-					return err
-				}
-				if _, err := os.Lstat(newSource); err == nil {
-					return fmt.Errorf("FHS staging path already exists: %q", newSource)
-				} else if !os.IsNotExist(err) {
-					return err
-				}
-				if insideStaging(ir.StagingDir, source) {
-					st, err := os.Lstat(source)
-					if err != nil {
-						return err
-					}
-					if !st.Mode().IsRegular() {
-						return fmt.Errorf("FHS source is not a regular file: %q", source)
-					}
-					if err := os.Rename(source, newSource); err != nil {
-						return fmt.Errorf("relocate %q: %w", dest, err)
-					}
-				} else if err := copyIntoStage(source, newSource); err != nil {
-					return fmt.Errorf("copy external source for %q: %w", dest, err)
-				}
-				entry.SourcePath = newSource
-			}
+		updated, err := updateConfigFilePaths(ir, entry, dest, replacements)
+		if err != nil {
+			return fmt.Errorf("update config %s: %w", dest, err)
 		}
-		newFiles[newDest] = entry
-	}
-	if len(replacements) > 0 {
-		dests := make([]string, 0, len(newFiles))
-		for dest := range newFiles {
-			dests = append(dests, dest)
-		}
-		sort.Strings(dests)
-		for _, dest := range dests {
-			entry := newFiles[dest]
-			if entry.IsDir || entry.IsSymlink || !isTextConfig(dest) {
-				continue
-			}
-			updated, err := updateConfigFilePaths(ir, entry, dest, replacements)
-			if err != nil {
-				return fmt.Errorf("update config %s: %w", dest, err)
-			}
-			newFiles[dest] = updated
-		}
+		newFiles[dest] = updated
 	}
 	ir.Files = newFiles
 	return nil
