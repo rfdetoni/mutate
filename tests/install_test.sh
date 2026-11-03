@@ -75,11 +75,13 @@ case "$1" in
    else
      echo "go version go1.26.4 linux/amd64"
    fi ;;
+ mod) [ "$2" = tidy ] || exit 1 ;;
  build)
    if [ "${MOCK_LOCAL_GO_OLD:-0}" = 1 ]; then
      echo "go: go.mod requires go >= 1.26.4 (running go 1.24.0; GOTOOLCHAIN=local)" >&2
      exit 1
    fi
+   printf '%s\n' "$*" >> "$MOCK_FIXTURES/go-build-args.log"
    out=
    while [ "$#" -gt 0 ]; do
      if [ "$1" = "-o" ]; then out=$2; shift 2; else shift; fi
@@ -90,6 +92,7 @@ case "$1" in
 esac
 EOF
 chmod 755 "$TMP/fixtures/bin/go"
+cp "$TMP/fixtures/bin/go" "$TMP/fixtures/go-saved"
 
 export MOCK_FIXTURES="$TMP/fixtures"
 export MOCK_RELEASE_MISSING=0
@@ -165,6 +168,112 @@ sh "$ROOT/install.sh" --source > "$TMP/bootstrap.log" 2>&1 ||
   { cat "$TMP/bootstrap.log"; die "Go bootstrap"; }
 grep -q 'temporary official Go toolchain' "$TMP/bootstrap.log" || die "toolchain not bootstrapped"
 [ "$("$MUTATE_INSTALL_DIR/mutate")" = source-binary ] || die "bootstrap content"
+
+# Native Wails dependency management tests use mocked package managers.
+# They must never touch the runner's real APT packages or require root.
+cp "$TMP/fixtures/go-saved" "$TMP/fixtures/bin/go"
+chmod 755 "$TMP/fixtures/bin/go"
+mkdir -p "$TMP/fixtures/source/mutate-main/desktop"
+printf 'module github.com/rfdetoni/mutate/desktop\ngo 1.26.4\n' > "$TMP/fixtures/source/mutate-main/desktop/go.mod"
+printf 'package main\n' > "$TMP/fixtures/source/mutate-main/desktop/main.go"
+tar -czf "$TMP/fixtures/source.tar.gz" -C "$TMP/fixtures/source" mutate-main
+
+cat > "$TMP/fixtures/bin/pkg-config" <<'EOF'
+#!/bin/sh
+[ "$1" = "--exists" ] || exit 1
+[ -f "$MOCK_FIXTURES/gui-installed" ] || exit 1
+case "$*" in
+  *"gtk4 webkitgtk-6.0"*) [ "${MOCK_GUI_LEGACY:-0}" = 0 ] ;;
+  *"gtk+-3.0 webkit2gtk-4.1"*) [ "${MOCK_GUI_LEGACY:-0}" = 1 ] ;;
+  *) exit 1 ;;
+esac
+EOF
+cat > "$TMP/fixtures/bin/apt-cache" <<'EOF'
+#!/bin/sh
+[ "$1" = show ] || exit 1
+case "$2" in
+  libwebkitgtk-6.0-dev) [ "${MOCK_GUI_LEGACY:-0}" = 0 ] ;;
+  libwebkit2gtk-4.1-dev) [ "${MOCK_GUI_LEGACY:-0}" = 1 ] ;;
+  *) exit 1 ;;
+esac
+EOF
+cat > "$TMP/fixtures/bin/apt-get" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$MOCK_FIXTURES/gui-apt.log"
+case "$1" in
+  install) touch "$MOCK_FIXTURES/gui-installed" ;;
+  update) : ;;
+  *) exit 1 ;;
+esac
+EOF
+cat > "$TMP/fixtures/bin/sudo" <<'EOF'
+#!/bin/sh
+if [ "$1" = "-n" ] && [ "$2" = true ]; then
+  [ "${MOCK_GUI_SUDO_DENY:-0}" = 0 ]
+  exit $?
+fi
+[ "${MOCK_GUI_SUDO_DENY:-0}" = 0 ] || exit 1
+exec "$@"
+EOF
+chmod 755 "$TMP/fixtures/bin/pkg-config" "$TMP/fixtures/bin/apt-cache" \
+  "$TMP/fixtures/bin/apt-get" "$TMP/fixtures/bin/sudo"
+
+MOCK_GUI_LEGACY=0
+export MOCK_GUI_LEGACY
+MOCK_RELEASE_MISSING=1
+export MOCK_RELEASE_MISSING
+rm -f "$TMP/fixtures/gui-installed" "$TMP/fixtures/gui-apt.log"
+sh "$ROOT/install.sh" --source > "$TMP/gui-auto.log" 2>&1 ||
+  { cat "$TMP/gui-auto.log"; die "automatic Wails dependencies"; }
+[ "$("$MUTATE_INSTALL_DIR/mutate")" = source-binary ] || die "GUI install broke CLI"
+[ -x "$MUTATE_INSTALL_DIR/mutate-gui" ] || die "native Wails shell not installed"
+grep -q 'install -y --no-install-recommends build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev' \
+  "$TMP/fixtures/gui-apt.log" || die "modern GTK packages not installed"
+
+# An already provisioned host must not invoke apt-get again.
+rm -f "$TMP/fixtures/gui-apt.log"
+sh "$ROOT/install.sh" --source > "$TMP/gui-present.log" 2>&1 ||
+  { cat "$TMP/gui-present.log"; die "GUI dependencies already present"; }
+[ ! -e "$TMP/fixtures/gui-apt.log" ] || die "reinstalled GTK dependencies unnecessarily"
+
+# Prefer the legacy Wails GTK3 build if the distro provides WebKitGTK 4.1.
+MOCK_GUI_LEGACY=1
+export MOCK_GUI_LEGACY
+rm -f "$TMP/fixtures/gui-installed" "$TMP/fixtures/gui-apt.log"
+sh "$ROOT/install.sh" --source > "$TMP/gui-legacy.log" 2>&1 ||
+  { cat "$TMP/gui-legacy.log"; die "legacy Wails dependencies"; }
+grep -q 'libgtk-3-dev libwebkit2gtk-4.1-dev' "$TMP/fixtures/gui-apt.log" ||
+  die "legacy GTK3 package selection failed"
+grep -q -- '-tags=gtk3' "$TMP/fixtures/go-build-args.log" ||
+  die "legacy GTK3 Wails build tag missing"
+
+# Opt-outs must prevent privileged dependency installation.
+rm -f "$MUTATE_INSTALL_DIR/mutate-gui" "$TMP/fixtures/gui-installed" "$TMP/fixtures/gui-apt.log"
+MUTATE_INSTALL_GUI_DEPS=0 sh "$ROOT/install.sh" --source > "$TMP/gui-env-optout.log" 2>&1 ||
+  { cat "$TMP/gui-env-optout.log"; die "GUI env opt-out"; }
+[ ! -e "$TMP/fixtures/gui-apt.log" ] && [ ! -e "$MUTATE_INSTALL_DIR/mutate-gui" ] ||
+  die "GUI dependencies installed despite environment opt-out"
+sh "$ROOT/install.sh" --source --no-gui-deps > "$TMP/gui-flag-optout.log" 2>&1 ||
+  { cat "$TMP/gui-flag-optout.log"; die "GUI flag opt-out"; }
+[ ! -e "$TMP/fixtures/gui-apt.log" ] || die "--no-gui-deps was ignored"
+
+# An explicit --gui-deps overrides the environment opt-out.
+MUTATE_INSTALL_GUI_DEPS=0 sh "$ROOT/install.sh" --source --gui-deps > "$TMP/gui-override.log" 2>&1 ||
+  { cat "$TMP/gui-override.log"; die "GUI dependency override"; }
+[ -x "$MUTATE_INSTALL_DIR/mutate-gui" ] || die "--gui-deps did not build native GUI"
+
+# A headless host without sudo must keep the CLI functional and warn.
+MOCK_GUI_SUDO_DENY=1
+export MOCK_GUI_SUDO_DENY
+rm -f "$TMP/fixtures/gui-installed" "$TMP/fixtures/gui-apt.log" "$MUTATE_INSTALL_DIR/mutate-gui"
+sh "$ROOT/install.sh" --source > "$TMP/gui-no-sudo.log" 2>&1 ||
+  { cat "$TMP/gui-no-sudo.log"; die "GUI no-sudo graceful fallback"; }
+[ "$("$MUTATE_INSTALL_DIR/mutate")" = source-binary ] || die "no-sudo failed CLI install"
+[ ! -e "$TMP/fixtures/gui-apt.log" ] || die "apt called without privilege"
+grep -q 'skipping GUI dependencies' "$TMP/gui-no-sudo.log" ||
+  die "missing warning about GUI dependencies"
+MOCK_GUI_SUDO_DENY=0
+export MOCK_GUI_SUDO_DENY
 
 printf '#!/bin/sh\necho previous\n' > "$MUTATE_INSTALL_DIR/mutate"
 chmod 755 "$MUTATE_INSTALL_DIR/mutate"
