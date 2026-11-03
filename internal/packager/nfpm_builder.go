@@ -24,6 +24,9 @@ func BuildPackage(ir *domain.PackageIR, targetFormat string, out io.Writer) erro
 	if err != nil {
 		return fmt.Errorf("get packager for %s: %w", targetFormat, err)
 	}
+	if err := domain.ValidatePackageIR(ir); err != nil {
+		return fmt.Errorf("validate package representation: %w", err)
+	}
 
 	info := &nfpm.Info{
 		Name:        cleanPackageName(ir.Metadata.Name),

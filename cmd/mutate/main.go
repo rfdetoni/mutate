@@ -39,27 +39,6 @@ func main() {
 	}
 }
 
-func getUnpackerForFormat(fmtType domain.Format) (unpacker.Unpacker, error) {
-	switch fmtType {
-	case domain.FormatDEB:
-		return unpacker.NewDebUnpacker(), nil
-	case domain.FormatRPM:
-		return unpacker.NewRpmUnpacker(), nil
-	case domain.FormatArch:
-		return unpacker.NewArchUnpacker(), nil
-	case domain.FormatAlpineAPK:
-		return unpacker.NewAlpineUnpacker(), nil
-	case domain.FormatAndroidAPK:
-		return unpacker.NewAndroidUnpacker(), nil
-	case domain.FormatTarball:
-		return unpacker.NewSourceUnpacker(), nil
-	case domain.FormatAppImage:
-		return unpacker.NewAppImageUnpacker(), nil
-	default:
-		return nil, fmt.Errorf("unsupported package format: %s", fmtType)
-	}
-}
-
 func newInspectCmd() *cobra.Command {
 	var extract, fast, jsonOutput bool
 	cmd := &cobra.Command{
@@ -106,19 +85,7 @@ func newInspectCmd() *cobra.Command {
 				return err
 			}
 			defer os.RemoveAll(stage)
-			u, err := getUnpackerForFormat(format)
-			if err != nil {
-				return err
-			}
-			if !extract {
-				if preserver, ok := u.(unpacker.PortablePreserver); ok {
-					ir, err = preserver.Preserve(src, stage)
-				} else {
-					ir, err = u.Unpack(src, stage)
-				}
-			} else {
-				ir, err = u.Unpack(src, stage)
-			}
+			ir, err = unpacker.Prepare(src, format, stage, unpacker.PrepareOptions{Extract: extract})
 			if err != nil {
 				return fmt.Errorf("inspect package: %w", err)
 			}
