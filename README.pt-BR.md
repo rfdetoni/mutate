@@ -253,3 +253,65 @@ O modo padrão não coleta essas medições. Para comparar versões em pacotes r
 `mutate inspect pacote.deb` mantém análise ELF completa e consulta de provedores no sistema. Debian, Arch e Alpine passam a resolver todas as bibliotecas externas em lote, evitando varreduras repetidas das bases locais. Para analisar ELF sem consultar gerenciadores de pacotes, use `mutate inspect pacote.deb --no-resolve`: os SONAMEs continuam disponíveis e os provedores são identificados como **NOT RESOLVED**. Essa opção é útil em interfaces gráficas e ambientes offline; não substitui `--fast`.
 
 `MUTATE_TIMINGS=1` passa a contabilizar também `cleanup`, pois remover os arquivos temporários faz parte do tempo real percebido pelo usuário. O comparador de benchmarks exibe p50/p95 por pacote, além do agregado, para identificar quais pacotes influenciaram a mudança de desempenho.
+
+## Interface gráfica integrada (Linux)
+
+O **mesmo executável Go**, sem CGO, inclui agora uma interface gráfica
+flat e compacta. HTML/CSS/JavaScript são incorporados ao binário, sem
+aplicação GUI separada, GTK/WebKit obrigatório, dependências de CDN ou
+serviço externo. Os comandos atuais `inspect`, `build` e `install`
+permanecem inalterados.
+
+```sh
+mutate gui                      # abre uma janela de aplicativo quando Chromium está disponível
+mutate gui --register           # cadastra o atalho no menu de aplicativos Linux
+mutate gui --no-browser         # imprime a URL local sem abrir o navegador
+```
+
+Para instalar e registrar o atalho opcionalmente:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --user --desktop
+```
+
+A tela oferece uma área grande para arrastar o instalador ou clicar e
+selecionar, detalhes verdadeiros do pacote, análise ELF, conversão para
+DEB/RPM/Arch/Alpine com download, histórico da sessão e instalação
+assistida. A instalação exige confirmação e autorização via **PolicyKit
+(`pkexec`)** quando o processo não estiver privilegiado. É necessário
+um agente polkit no desktop; a GUI nunca captura senha de administrador.
+Se a instalação falhar, o pacote convertido continua disponível para baixar.
+
+A interface usa HTTP **somente em 127.0.0.1**, com um caminho de sessão
+aleatório e cabeçalho obrigatório para alterações. Arquivos ficam em
+diretório temporário privado (excluído ao encerrar); upload máximo de
+2 GiB. Compilação de código-fonte continua opt-in e isolada. Progresso
+indica apenas fases reais, sem percentuais fictícios. Navegadores
+Chromium/Brave/Chrome podem abrir em modo janela; os demais usam aba do
+navegador padrão. Para desktop sem navegador automático use
+`--no-browser` e abra a URL local exibida.
+
+As regras de design e comportamento estão em [DESIGN.md](DESIGN.md) e
+[UX-CONTRACT.md](UX-CONTRACT.md).
+
+### Biblioteca de aplicativos
+
+A aba **Biblioteca** consulta os repositórios habilitados na distribuição
+Linux atual: APT (Debian/Ubuntu), DNF (Fedora/RHEL), pacman (Arch) ou APK
+(Alpine). Opcionalmente, pesquisa o [AUR via RPC v5](https://wiki.archlinux.org/title/Aurweb_RPC_interface)
+para mostrar aplicações mantidas pela comunidade. A consulta online ao
+AUR é indicada explicitamente na tela.
+
+Os pacotes **nativos têm prioridade**, com a versão *candidata* definida
+pelo próprio gerenciador de pacotes do sistema (repositórios e prioridades
+configurados). Não é correto comparar versões de distribuições diferentes
+como se fossem sempre compatíveis. Para manter o desempenho, cada busca
+exibe até 30 resultados nativos e 20 do AUR; refine o termo se necessário.
+
+Instalar um resultado nativo exige confirmação e autorização de
+administrador via PolicyKit. Os resultados do **AUR são apenas
+referências**, com link para inspecionar a receita PKGBUILD manualmente:
+o M.U.T.A.T.E. não executa scripts comunitários automaticamente. O
+catálogo pesquisa o índice habilitado no host e o AUR, mas não promete
+cobertura universal de todos os repositórios Debian/Fedora/Arch
+existentes na internet.

@@ -250,3 +250,67 @@ No timing probes are enabled by default. Compare p50/p95 between two builds with
 `mutate inspect file.deb` keeps the default, complete ELF analysis and host provider lookup. Native package-database lookups on Debian, Arch, and Alpine now resolve all external SONAMEs in a batch, limiting repeated filesystem scans. For a full ELF inspection without package-manager queries, use `mutate inspect file.deb --no-resolve`: this still extracts and scans ELF binaries and clearly marks host providers as **NOT RESOLVED**. It is useful for offline/interactive GUI workflows, not an alias for `--fast`.
 
 With `MUTATE_TIMINGS=1`, the full inspection breakdown includes `detect`, `unpack`, `elf`, `resolve`, and `cleanup`; staging cleanup was previously missing from the phase timings even though it contributes to wall-clock latency. The benchmark comparator now reports per-package p50/p95 and the median per-package change as well as the pooled result. See `benchmarks/README.md`.
+
+## Integrated graphical interface (Linux)
+
+The **same statically built Go executable** now serves a clean, compact GUI.
+There is no separate GUI application, no CGO/GTK dependency, no JavaScript
+build chain and no remote web service. All HTML, CSS and JavaScript are
+embedded in `mutate`. Existing `inspect`, `build`, and `install` CLI
+commands continue to work unchanged.
+
+```sh
+mutate gui                      # dedicated Chromium app window when available
+mutate gui --register           # add M.U.T.A.T.E. to your Linux application menu
+mutate gui --no-browser         # show a private loopback URL without launching a browser
+```
+
+For a new user install with an optional application-menu shortcut:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --user --desktop
+```
+
+The GUI presents a large drag-and-drop / file-picker surface, a real metadata
+preview, full ELF inspection, native-format conversion with downloads,
+session-only history, and an installation confirmation. Installs use the
+native package manager via **PolicyKit (`pkexec`)** when the current process
+is not privileged. You must have a working desktop polkit agent to complete
+privileged installation; the GUI never asks for your administrator password.
+A converted package remains downloadable if installation fails.
+
+Security: HTTP binds to **127.0.0.1 only**, and a random session path plus
+mutation-request header isolates the local browser session. All assets are
+embedded and no CDNs are used. Files live in a private temporary workspace
+that is removed on shutdown; uploads are limited to 2 GiB. Source compilation
+remains opt-in and sandboxed. The GUI's progress shows real operation phases,
+not invented percentages. Chromium/Brave/Chrome opens an app window; a
+default browser tab is used on other desktops. If no graphical session is
+available, use `--no-browser` and open the displayed local URL manually.
+
+Design tokens and behavior are documented in [DESIGN.md](DESIGN.md) and
+[UX-CONTRACT.md](UX-CONTRACT.md).
+
+### Application library
+
+The **Library** tab searches packages from the enabled repositories of the
+current Linux distribution: APT on Debian/Ubuntu, DNF on Fedora/RHEL,
+pacman on Arch, or APK on Alpine. It can additionally search the
+official [AUR RPC v5](https://wiki.archlinux.org/title/Aurweb_RPC_interface)
+online to surface community-maintained packages. AUR requests are made
+only when that search option is checked.
+
+Search results prefer **native repository packages**, showing the version
+chosen as the *candidate* by the host's configured repositories. There is
+no meaningful global "latest version" across incompatible distribution
+packaging ecosystems. Results are intentionally capped to 30 native and
+20 AUR matches per query for responsiveness; broad queries should be
+refined.
+
+Native packages can be installed after confirmation using the host
+package manager and a PolicyKit authorization challenge. AUR entries
+are **discovery-only links**: M.U.T.A.T.E. will not run PKGBUILDs or
+install arbitrary community sources without review. Source repositories
+from other distributions are not directly installable on the current
+host. A disabled/unavailable package index yields a warning instead of
+pretending a complete list exists.

@@ -32,6 +32,7 @@ func main() {
 	rootCmd.AddCommand(newInspectCmd())
 	rootCmd.AddCommand(newBuildCmd())
 	rootCmd.AddCommand(newInstallCmd())
+	rootCmd.AddCommand(newGUICmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
