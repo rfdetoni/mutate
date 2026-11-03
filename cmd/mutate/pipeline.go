@@ -106,6 +106,9 @@ func prepareConversionWithOptions(src, target string, allowSourceBuild bool, opt
 	if err != nil {
 		return fail(fmt.Errorf("prepare package: %w", err))
 	}
+	if err := domain.ValidatePackageIR(ir); err != nil {
+		return fail(fmt.Errorf("validate package: %w", err))
+	}
 	if ir.Metadata.Name == "" || strings.ContainsAny(ir.Metadata.Name, "/\\\x00\n\r\t\"' ;$`") || ir.Metadata.Name == "." || ir.Metadata.Name == ".." {
 		return fail(fmt.Errorf("invalid package name %q", ir.Metadata.Name))
 	}

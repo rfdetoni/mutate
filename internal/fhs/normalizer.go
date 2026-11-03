@@ -191,8 +191,8 @@ func isTextConfig(path string) bool {
 // NormalizePackage changes package destinations, never the caller's originals.
 // It detects path collisions before touching staging files.
 func NormalizePackage(ir *domain.PackageIR, targetDistro resolver.Distro) error {
-	if ir == nil {
-		return fmt.Errorf("nil package")
+	if err := domain.ValidatePackageIR(ir); err != nil {
+		return fmt.Errorf("validate before FHS normalization: %w", err)
 	}
 	target := GetTargetFHS(targetDistro, ir.Metadata.Architecture)
 	newFiles := make(map[string]domain.FileEntry, len(ir.Files))
@@ -250,6 +250,13 @@ func NormalizePackage(ir *domain.PackageIR, targetDistro resolver.Distro) error 
 					return err
 				}
 				if insideStaging(ir.StagingDir, source) {
+					st, err := os.Lstat(source)
+					if err != nil {
+						return err
+					}
+					if !st.Mode().IsRegular() {
+						return fmt.Errorf("FHS source is not a regular file: %q", source)
+					}
 					if err := os.Rename(source, newSource); err != nil {
 						return fmt.Errorf("relocate %q: %w", dest, err)
 					}
