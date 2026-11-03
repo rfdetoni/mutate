@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+ "github.com/rfdetoni/mutate/internal/catalog"
 	"encoding/json"
 	"io"
 	"mime/multipart"
@@ -244,4 +245,31 @@ func TestGUIRejectsDependencyMapFilePaths(t *testing.T) {
 		t.Fatalf("GUI accepted a host path as dependency JSON: %d %s",
 			recorder.Code, recorder.Body.String())
 	}
+}
+
+func TestGUICatalogRejectsUntrustedInstallAndInvalidQueries(t *testing.T) {
+ app,err:=newGUIApp()
+ if err!=nil{t.Fatal(err)}
+ defer app.close()
+ app.address="127.0.0.1"
+ app.catalog["aur:community-tool"]=catalog.App{
+  ID:"aur:community-tool",Name:"community-tool",Source:"AUR",
+  Installable:false,Native:false,
+ }
+ for _,id:=range []string{"aur:community-tool","native:missing"}{
+  body:=strings.NewReader(`{"id":"`+id+`"}`)
+  req:=guiTestRequest(app,"POST","/api/catalog/install",body)
+  req.Header.Set("Content-Type","application/json")
+  out:=httptest.NewRecorder()
+  app.handler().ServeHTTP(out,req)
+  if out.Code!=http.StatusForbidden{
+   t.Fatalf("untrusted or unknown package %s allowed: %d %s",id,out.Code,out.Body.String())
+  }
+ }
+ req:=guiTestRequest(app,"GET","/api/catalog?q=-v&aur=0",nil)
+ out:=httptest.NewRecorder()
+ app.handler().ServeHTTP(out,req)
+ if out.Code!=http.StatusBadRequest{
+  t.Fatalf("invalid catalog query accepted: %d %s",out.Code,out.Body.String())
+ }
 }

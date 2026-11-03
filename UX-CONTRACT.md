@@ -58,3 +58,25 @@ No package signature verification, sandboxed execution of installed apps,
 remote multi-user web service or automatic elevation without user consent.
 Cross-distro conversions still require explicit dependency mappings when
 the Go motor cannot guarantee compatibility.
+
+## Application library and privileged installs
+- Search is explicit (submit button or Enter), not live-on-keystroke.
+  AUR network lookup is visible via a user-controllable checkbox.
+- Native providers: APT, DNF, pacman and APK, chosen by the host's
+  distribution. Only configured repository candidates are presented
+  as immediately installable. An AUR result is discovery-only, with
+  a link to its upstream page; no PKGBUILD execution.
+- Each result shows name, candidate version, description and origin.
+  Search is capped at 30 native + 20 AUR results; incomplete native
+  lookup and failed AUR requests produce source-specific warnings.
+- The API accepts installation only for a native result from the
+  most recent in-session search. It validates the name, holds the
+  one-active-operation lock and invokes the distro package manager
+  with an argv array (never a shell).
+- Privileged installation is confirmed in the product's native dialog
+  before calling the API. PolicyKit performs elevation; package-manager
+  dependencies and maintainer scripts can change the system. An error
+  remains visible and history records the outcome.
+- Source package-manager versions are not compared lexicographically
+  across distros: the installed candidate is resolved by the host
+  manager at installation time to honor repository priorities.

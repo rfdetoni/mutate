@@ -290,3 +290,27 @@ available, use `--no-browser` and open the displayed local URL manually.
 
 Design tokens and behavior are documented in [DESIGN.md](DESIGN.md) and
 [UX-CONTRACT.md](UX-CONTRACT.md).
+
+### Application library
+
+The **Library** tab searches packages from the enabled repositories of the
+current Linux distribution: APT on Debian/Ubuntu, DNF on Fedora/RHEL,
+pacman on Arch, or APK on Alpine. It can additionally search the
+official [AUR RPC v5](https://wiki.archlinux.org/title/Aurweb_RPC_interface)
+online to surface community-maintained packages. AUR requests are made
+only when that search option is checked.
+
+Search results prefer **native repository packages**, showing the version
+chosen as the *candidate* by the host's configured repositories. There is
+no meaningful global "latest version" across incompatible distribution
+packaging ecosystems. Results are intentionally capped to 30 native and
+20 AUR matches per query for responsiveness; broad queries should be
+refined.
+
+Native packages can be installed after confirmation using the host
+package manager and a PolicyKit authorization challenge. AUR entries
+are **discovery-only links**: M.U.T.A.T.E. will not run PKGBUILDs or
+install arbitrary community sources without review. Source repositories
+from other distributions are not directly installable on the current
+host. A disabled/unavailable package index yields a warning instead of
+pretending a complete list exists.

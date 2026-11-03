@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rfdetoni/mutate/internal/catalog"
 	"github.com/rfdetoni/mutate/internal/detector"
 	"github.com/rfdetoni/mutate/internal/domain"
 	"github.com/rfdetoni/mutate/internal/resolver"
@@ -62,6 +63,7 @@ type guiApp struct {
 	job       *guiJob
 	history   []guiHistory
 	outputs   map[string]guiOutput
+	catalog   map[string]catalog.App
 	busy      bool
 	shutdown  func()
 }
@@ -79,7 +81,7 @@ func newGUIApp() (*guiApp, error) {
 		_ = os.RemoveAll(dir)
 		return nil, err
 	}
-	return &guiApp{token: token, workspace: dir, outputs: make(map[string]guiOutput)}, nil
+	return &guiApp{token: token, workspace: dir, outputs: make(map[string]guiOutput), catalog: make(map[string]catalog.App)}, nil
 }
 func (a *guiApp) close() { _ = os.RemoveAll(a.workspace) }
 
@@ -95,6 +97,8 @@ func (a *guiApp) handler() http.Handler {
 	assets, _ := guiFileSystem()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/state", a.handleState)
+	mux.HandleFunc("GET /api/catalog", a.handleCatalogSearch)
+	mux.HandleFunc("POST /api/catalog/install", a.handleCatalogInstall)
 	mux.HandleFunc("POST /api/upload", a.handleUpload)
 	mux.HandleFunc("POST /api/action", a.handleAction)
 	mux.HandleFunc("GET /api/download/{id}", a.handleDownload)

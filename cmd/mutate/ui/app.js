@@ -19,6 +19,14 @@ const app = {
   polling: null,
   lastJobID: '',
   historyRenderedSignature: '',
+  catalog: [],
+  catalogQuery: '',
+  catalogWarnings: [],
+  catalogLoading: false,
+  catalogError: '',
+  catalogSequence: 0,
+  catalogAbort: null,
+  catalogPending: null,
 };
 
 const viewCopy = {
@@ -90,9 +98,10 @@ function setView(view) {
     if (active) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
-  const advanced = view === 'history' || view === 'settings';
+  const advanced = view === 'history' || view === 'settings' || view === 'library';
   $('workspace-view').hidden = advanced;
   $('history-view').hidden = view !== 'history';
+  $('library-view').hidden = view !== 'library';
   $('settings-view').hidden = view !== 'settings';
   document.querySelector('.app-layout').classList.toggle('wide-view', advanced);
   if (!advanced) {
@@ -109,6 +118,10 @@ function setView(view) {
     $('history-title').focus({ preventScroll: true });
   }
   if (view === 'settings') $('settings-title').focus({ preventScroll: true });
+  if (view === 'library') {
+    renderCatalog();
+    $('library-title').focus({ preventScroll: true });
+  }
 }
 
 function refreshActions() {
@@ -119,6 +132,9 @@ function refreshActions() {
   $('drop-zone').setAttribute('aria-disabled', disabledDrop ? 'true' : 'false');
   $('drop-zone').tabIndex = disabledDrop ? -1 : 0;
   $('file-input').disabled = disabledDrop;
+  for (const button of document.querySelectorAll('.catalog-install-button')) {
+    button.disabled = app.busy || app.uploading;
+  }
   const isInstall = app.view === 'install';
   for (const input of document.querySelectorAll('input[name="target-format"]')) {
     input.disabled = isInstall || app.busy || app.uploading;
@@ -182,14 +198,14 @@ function renderActivity() {
     badge.classList.add('running');
     list.append(stepLine('Transferência em andamento', 'active'));
   } else if (job && job.state === 'running') {
-    text('status-title', job.operation === 'inspect' ? 'Inspecionando pacote…'
+    text('status-title', job.operation === 'catalog-install' ? 'Instalando aplicativo…' : job.operation === 'inspect' ? 'Inspecionando pacote…'
       : job.operation === 'install' ? 'Preparando instalação…' : 'Convertendo pacote…');
     text('status-detail', job.phase || 'Operação iniciada');
     text('status-badge', 'Em andamento');
     badge.classList.add('running');
     list.append(stepLine('Arquivo recebido', 'done'), stepLine(job.phase || 'Executando', 'active'));
   } else if (job && job.state === 'completed') {
-    text('status-title', job.operation === 'inspect' ? 'Inspeção concluída'
+    text('status-title', job.operation === 'catalog-install' ? 'Aplicativo instalado' : job.operation === 'inspect' ? 'Inspeção concluída'
       : job.operation === 'install' ? 'Instalação concluída' : 'Conversão concluída');
     text('status-detail', job.message || 'Operação concluída');
     text('status-badge', 'Concluído');
@@ -248,7 +264,7 @@ function renderHistory() {
     const name = document.createElement('strong');
     name.textContent = item.name;
     const label = document.createElement('small');
-    const operation = { inspect: 'Inspeção', convert: 'Conversão', install: 'Instalação' }[item.operation] || item.operation;
+    const operation = { inspect: 'Inspeção', convert: 'Conversão', install: 'Instalação', 'catalog-install': 'Biblioteca · instalação' }[item.operation] || item.operation;
     label.textContent = operation + (item.target ? ' · ' + item.target.toUpperCase() : '') +
       ' · ' + (item.state === 'completed' ? 'Concluído' : 'Não concluído') +
       ' · ' + new Date(item.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -270,6 +286,7 @@ function render() {
   renderPackage();
   renderActivity();
   if (app.view === 'history') renderHistory();
+  renderCatalogStatus();
   refreshActions();
   text('host-label', app.host
     ? 'Sistema: ' + app.host + (app.nativeTarget ? ' · formato nativo: ' + app.nativeTarget.toUpperCase() : '')
@@ -383,6 +400,176 @@ async function runAction(action) {
     render();
   }
 }
+
+function renderCatalogStatus() {
+  const status = $('catalog-install-status');
+  const job = app.job;
+  if (!job || job.operation !== 'catalog-install') {
+    status.hidden = true;
+    return;
+  }
+  status.hidden = false;
+  status.textContent = job.state === 'running'
+    ? 'Instalando via repositórios do sistema · ' + (job.phase || 'Aguardando autorização')
+    : job.state === 'completed'
+      ? job.message || 'Aplicativo instalado'
+      : 'Instalação não concluída: ' + (job.message || 'verifique o gerenciador de pacotes');
+}
+
+function renderCatalog() {
+  const summary = $('catalog-summary');
+  const results = $('catalog-results');
+  const warnings = $('catalog-warnings');
+  const error = $('catalog-error');
+  $('catalog-search-btn').disabled = app.catalogLoading;
+  $('catalog-search-btn').textContent = app.catalogLoading ? 'Pesquisando…' : 'Pesquisar';
+  error.hidden = !app.catalogError;
+  error.textContent = app.catalogError;
+  warnings.replaceChildren();
+  warnings.hidden = app.catalogWarnings.length === 0;
+  for (const message of app.catalogWarnings) {
+    const p = document.createElement('p');
+    p.textContent = message;
+    warnings.append(p);
+  }
+  if (app.catalogLoading) {
+    summary.textContent = 'Consultando repositórios disponíveis…';
+    return;
+  }
+  if (!app.catalogQuery) {
+    summary.textContent = 'Pesquise para explorar aplicativos disponíveis.';
+    results.replaceChildren();
+    return;
+  }
+  const native = app.catalog.filter((item) => item.native).length;
+  const aur = app.catalog.length - native;
+  summary.textContent = app.catalog.length
+    ? app.catalog.length + ' resultados para "' + app.catalogQuery + '" · ' +
+      native + ' nativos · ' + aur + ' AUR'
+    : 'Nenhum pacote encontrado para "' + app.catalogQuery + '". Experimente outro termo.';
+  results.replaceChildren();
+  for (const item of app.catalog) {
+    const row = document.createElement('article');
+    row.className = 'catalog-app';
+    const info = document.createElement('div');
+    info.className = 'catalog-app-info';
+    const heading = document.createElement('div');
+    heading.className = 'catalog-app-heading';
+    const title = document.createElement('strong');
+    title.textContent = item.name;
+    const badge = document.createElement('span');
+    badge.className = 'catalog-source' + (item.native ? ' native' : '');
+    badge.textContent = item.native ? 'Nativo · ' + item.source : 'AUR · comunidade';
+    heading.append(title, badge);
+    const description = document.createElement('p');
+    description.className = 'catalog-app-description';
+    description.textContent = item.description || 'Descrição não disponível.';
+    const version = document.createElement('div');
+    version.className = 'catalog-app-version';
+    version.textContent = 'Versão: ' + (item.version || 'não informada') +
+      (item.native ? ' · ' + (item.repository || 'repositórios configurados') : ' · referência para Arch') +
+      (item.out_of_date ? ' · sinalizado como desatualizado' : '');
+    info.append(heading, description, version);
+    const actions = document.createElement('div');
+    actions.className = 'catalog-app-actions';
+    if (item.installable && item.native) {
+      const install = document.createElement('button');
+      install.type = 'button';
+      install.className = 'action-btn secondary catalog-install-button';
+      install.textContent = 'Instalar';
+      install.disabled = app.busy || app.uploading;
+      install.addEventListener('click', () => confirmCatalog(item));
+      actions.append(install);
+    } else if (item.url && item.url.startsWith('https://aur.archlinux.org/packages/')) {
+      const link = document.createElement('a');
+      link.href = item.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'Ver no AUR';
+      link.className = 'text-link';
+      actions.append(link);
+    }
+    row.append(info, actions);
+    results.append(row);
+  }
+}
+
+async function searchCatalog(event) {
+  event?.preventDefault();
+  const query = $('catalog-query').value.trim();
+  if (query.length < 2 || query.length > 60) {
+    app.catalogError = 'Digite entre 2 e 60 caracteres para pesquisar.';
+    renderCatalog();
+    return;
+  }
+  if (app.catalogAbort) app.catalogAbort.abort();
+  const request = new AbortController();
+  app.catalogAbort = request;
+  const current = ++app.catalogSequence;
+  app.catalogLoading = true;
+  app.catalogError = '';
+  app.catalogQuery = query;
+  renderCatalog();
+  try {
+    const includeAUR = $('catalog-aur').checked ? '1' : '0';
+    const response = await api('catalog?q=' + encodeURIComponent(query) +
+      '&aur=' + includeAUR, { signal: request.signal });
+    if (current !== app.catalogSequence) return;
+    app.catalog = response.apps || [];
+    app.catalogWarnings = response.warnings || [];
+    app.catalogError = '';
+  } catch (error) {
+    if (current !== app.catalogSequence || request.signal.aborted) return;
+    app.catalogError = error.message;
+    app.catalog = [];
+    app.catalogWarnings = [];
+  } finally {
+    if (current === app.catalogSequence) {
+      app.catalogLoading = false;
+      renderCatalog();
+    }
+  }
+}
+
+function confirmCatalog(item) {
+  if (app.busy || app.uploading || !item.native || !item.installable) return;
+  app.catalogPending = item;
+  $('catalog-confirm-name').textContent = item.name +
+    (item.version ? ' · versão candidata ' + item.version : '') +
+    ' · ' + (item.repository || 'repositórios nativos');
+  $('catalog-dialog').showModal();
+  $('cancel-catalog').focus();
+}
+
+async function installCatalog() {
+  const item = app.catalogPending;
+  $('catalog-dialog').close();
+  app.catalogPending = null;
+  if (!item || app.busy) return;
+  app.requestError = '';
+  app.busy = true;
+  render();
+  try {
+    await api('catalog/install', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id }),
+    });
+    await refreshState();
+    startPolling();
+  } catch (error) {
+    app.busy = false;
+    app.catalogError = error.message;
+    renderCatalog();
+    refreshActions();
+  }
+}
+
+$('catalog-form').addEventListener('submit', searchCatalog);
+$('cancel-catalog').addEventListener('click', () => {
+  $('catalog-dialog').close();
+  app.catalogPending = null;
+});
+$('confirm-catalog').addEventListener('click', installCatalog);
 
 const zone = $('drop-zone');
 const input = $('file-input');

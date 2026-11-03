@@ -61,3 +61,12 @@ element; close or Escape returns focus. Screen-reader status uses an
 - `action-btn`: one action per intent; violet for conversion, green for
   privileged installation, neutral for inspection.
 - `history-list`: session-only; downloadable converted outputs.
+
+## Application library
+The Library section uses the same full-width main content as History and
+Settings. Search is a single horizontal row above an editorial-style list
+separated by hairline dividers, not a grid of inflated app cards. Every
+row shows application name, short description, origin (native repository
+versus community AUR), candidate version and a contextual action. Native
+packages use the existing positive/neutral tokens; AUR remains visually
+subordinate and does not pretend to be an official trusted repository.

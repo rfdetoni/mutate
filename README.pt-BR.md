@@ -293,3 +293,25 @@ navegador padrão. Para desktop sem navegador automático use
 
 As regras de design e comportamento estão em [DESIGN.md](DESIGN.md) e
 [UX-CONTRACT.md](UX-CONTRACT.md).
+
+### Biblioteca de aplicativos
+
+A aba **Biblioteca** consulta os repositórios habilitados na distribuição
+Linux atual: APT (Debian/Ubuntu), DNF (Fedora/RHEL), pacman (Arch) ou APK
+(Alpine). Opcionalmente, pesquisa o [AUR via RPC v5](https://wiki.archlinux.org/title/Aurweb_RPC_interface)
+para mostrar aplicações mantidas pela comunidade. A consulta online ao
+AUR é indicada explicitamente na tela.
+
+Os pacotes **nativos têm prioridade**, com a versão *candidata* definida
+pelo próprio gerenciador de pacotes do sistema (repositórios e prioridades
+configurados). Não é correto comparar versões de distribuições diferentes
+como se fossem sempre compatíveis. Para manter o desempenho, cada busca
+exibe até 30 resultados nativos e 20 do AUR; refine o termo se necessário.
+
+Instalar um resultado nativo exige confirmação e autorização de
+administrador via PolicyKit. Os resultados do **AUR são apenas
+referências**, com link para inspecionar a receita PKGBUILD manualmente:
+o M.U.T.A.T.E. não executa scripts comunitários automaticamente. O
+catálogo pesquisa o índice habilitado no host e o AUR, mas não promete
+cobertura universal de todos os repositórios Debian/Fedora/Arch
+existentes na internet.

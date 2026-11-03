@@ -266,25 +266,26 @@ func installGUIOutput(path string, host resolver.Distro) error {
 	default:
 		return fmt.Errorf("distribuição não suportada")
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+	return runGUIPrivileged(ctx, executable, args...)
+}
+
+// runGUIPrivileged is shared by package-file installs and repository installs.
+// The manager executable is resolved before invoking PolicyKit, never a shell.
+func runGUIPrivileged(ctx context.Context, executable string, args ...string) error {
+	manager, err := exec.LookPath(executable)
+	if err != nil {
+		return fmt.Errorf("gerenciador de pacotes indisponível: %w", err)
+	}
 	if os.Geteuid() != 0 {
 		if _, err := exec.LookPath("pkexec"); err != nil {
 			return fmt.Errorf("pkexec (PolicyKit) não encontrado; instale o pacote manualmente com privilégios de administrador")
 		}
-		args = append([]string{executable}, args...)
-		executable = "pkexec"
+		args = append([]string{manager}, args...)
+		manager = "pkexec"
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
-	defer cancel()
-	// pkexec must receive the resolved executable path, not an
-	// arbitrary command name or shell expression.
-	if executable == "pkexec" {
-		manager, err := exec.LookPath(args[0])
-		if err != nil {
-			return fmt.Errorf("gerenciador de pacotes indisponível: %w", err)
-		}
-		args[0] = manager
-	}
-	command := exec.CommandContext(ctx, executable, args...)
+	command := exec.CommandContext(ctx, manager, args...)
 	var stderr cappedGUIBuffer
 	command.Stdout = io.Discard
 	command.Stderr = &stderr

@@ -253,3 +253,36 @@ dialog::backdrop { background: rgba(20,25,39,.35); }
   .nav-item.active, .format-control input:checked + span { outline: 1px solid Highlight; }
   .step-point.done, .step-point.active { border: 2px solid Highlight; }
 }
+
+/* Catalog: a dense package list, not a card grid. */
+.catalog-search { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 21px; }
+.catalog-search > label:first-child { display: block; font-weight: 650; font-size: 12px; margin-bottom: 8px; }
+.catalog-search-row { display: flex; gap: 9px; }
+.catalog-search-row input { width: 100%; flex: 1; min-width: 0; background: #fff; color: var(--ink); border: 1px solid var(--line-strong); border-radius: 5px; padding: 10px 12px; outline-offset: 2px; }
+.catalog-search-row button { flex: 0 0 auto; padding-inline: 18px; }
+.catalog-option { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; margin-top: 12px; color: var(--ink-soft); cursor: pointer; }
+.catalog-option input { margin: 0; accent-color: var(--accent); }
+.catalog-summary { margin-top: 22px; padding-bottom: 12px; border-bottom: 1px solid var(--line); font-size: 11px; color: var(--ink-soft); min-height: 27px; }
+.catalog-results { min-height: 115px; }
+.catalog-app { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 14px; align-items: center; padding: 14px 2px; border-bottom: 1px solid var(--line); }
+.catalog-app-info { min-width: 0; }
+.catalog-app-heading { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+.catalog-app-heading strong { font-size: 12.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.catalog-source { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 630; background: var(--surface-muted); border: 1px solid var(--line); color: var(--ink-soft); }
+.catalog-source.native { background: var(--positive-light); color: var(--positive); border-color: #d7e9df; }
+.catalog-app-description { margin: 4px 0 4px; color: var(--ink-soft); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
+.catalog-app-version { font-size: 10.5px; color: var(--ink-muted); font-family: var(--font-mono); overflow-wrap: anywhere; }
+.catalog-app-actions { display: flex; gap: 8px; align-items: center; }
+.catalog-app-actions .action-btn { min-width: 88px; }
+.catalog-app-actions .text-link { white-space: nowrap; }
+.catalog-warnings { font-size: 11px; color: #8a612b; padding: 12px 0 3px; }
+.catalog-warnings p { margin: 0 0 5px; }
+.catalog-footer-note { font-size: 11px; color: var(--ink-muted); line-height: 1.6; padding-top: 20px; }
+.catalog-install-status { margin-top: 16px; font-size: 11.5px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-muted); overflow-wrap: anywhere; }
+.catalog-confirm-name { font-weight: 700; padding: 12px; background: var(--surface-muted); border-radius: 5px; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+ .catalog-app { grid-template-columns: 1fr; gap: 9px; }
+ .catalog-app-actions { justify-content: flex-start; }
+ .catalog-search-row { gap: 7px; }
+ .catalog-search-row button { padding-inline: 12px; }
+}

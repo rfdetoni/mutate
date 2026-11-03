@@ -28,6 +28,7 @@
    <nav class="sidebar" aria-label="Navegação principal">
     <span class="nav-caption">ÁREA DE TRABALHO</span>
     <button type="button" class="nav-item active" data-view="convert" aria-current="page"><span class="nav-symbol" aria-hidden="true">⇄</span>Converter</button>
+    <button type="button" class="nav-item" data-view="library"><span class="nav-symbol" aria-hidden="true">▤</span>Biblioteca</button>
     <button type="button" class="nav-item" data-view="inspect"><span class="nav-symbol" aria-hidden="true">⌕</span>Inspecionar</button>
     <button type="button" class="nav-item" data-view="install"><span class="nav-symbol" aria-hidden="true">↓</span>Instalar</button>
     <div class="nav-separator"></div>
@@ -84,6 +85,27 @@
        <a class="text-link" id="download-link" href="#" download>Baixar pacote convertido</a>
       </div>
      </section>
+    </section>
+
+    <section class="aux-view" id="library-view" aria-labelledby="library-title" hidden>
+     <div class="eyebrow">REPOSITÓRIOS DE APLICATIVOS</div>
+     <h1 id="library-title" tabindex="-1">Biblioteca de aplicativos</h1>
+     <p>Pesquise nos repositórios configurados no seu Linux e no AUR. Os pacotes nativos aparecem primeiro, com a versão candidata do sistema.</p>
+     <form id="catalog-form" role="search" class="catalog-search">
+      <label for="catalog-query">Nome ou descrição do aplicativo</label>
+      <div class="catalog-search-row">
+       <input id="catalog-query" type="search" minlength="2" maxlength="60" required
+         placeholder="Ex.: firefox, editor, blender" autocomplete="off">
+       <button type="submit" id="catalog-search-btn" class="action-btn primary">Pesquisar</button>
+      </div>
+      <label class="catalog-option" for="catalog-aur"><input type="checkbox" id="catalog-aur" checked> Incluir AUR (consulta online a servidor comunitário)</label>
+     </form>
+     <div class="catalog-summary" id="catalog-summary" aria-live="polite">Pesquise para explorar aplicativos disponíveis.</div>
+     <div id="catalog-error" class="error-text" role="alert" hidden></div>
+     <div id="catalog-warnings" class="catalog-warnings" hidden></div>
+     <div id="catalog-results" class="catalog-results"></div>
+     <div class="catalog-footer-note">A instalação usa o gerenciador de pacotes da distribuição atual e a versão candidata dos repositórios habilitados. Pacotes do AUR são apenas referências: revise o PKGBUILD antes de instalar manualmente.</div>
+     <div class="catalog-install-status" id="catalog-install-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="aux-view" id="history-view" aria-labelledby="history-title" hidden>
@@ -168,6 +190,18 @@
    <div class="dialog-actions">
     <button type="button" id="cancel-install" class="action-btn secondary">Cancelar</button>
     <button type="button" id="confirm-install" class="action-btn primary">Converter e instalar</button>
+   </div>
+  </div>
+ </dialog>
+ <dialog id="catalog-dialog" aria-labelledby="catalog-dialog-title" aria-describedby="catalog-dialog-description">
+  <div class="dialog-body">
+   <div class="eyebrow">REPOSITÓRIO NATIVO</div>
+   <h2 id="catalog-dialog-title">Instalar aplicativo?</h2>
+   <p id="catalog-dialog-description">O gerenciador de pacotes do Linux instalará o aplicativo e suas dependências. A versão será escolhida conforme os repositórios habilitados, e scripts do pacote poderão ser executados como administrador.</p>
+   <p class="catalog-confirm-name" id="catalog-confirm-name"></p>
+   <div class="dialog-actions">
+    <button type="button" id="cancel-catalog" class="action-btn secondary">Cancelar</button>
+    <button type="button" id="confirm-catalog" class="action-btn primary">Instalar do repositório</button>
    </div>
   </div>
  </dialog>
