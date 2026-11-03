@@ -265,6 +265,6 @@ say "Installed: $DEST/mutate"
 say "Alias:     $DEST/mut (unless previously occupied)"
 case ":$PATH:" in
     *":$DEST:"*) ;;
-    *) warn "$DEST is not in PATH. Add: export PATH=\"$DEST:\\$PATH\"" ;;
+    *) warn "$DEST is not in PATH. Add: export PATH=\"$DEST:\$PATH\"" ;;
 esac
 say "Done. Run: $DEST/mutate --version"
