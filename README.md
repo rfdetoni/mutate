@@ -29,7 +29,7 @@ M.U.T.A.T.E. inspects ELF binaries, resolves missing shared libraries (`.so`) di
 - **Explicit Library Isolation & Bundling:** Validates explicitly supplied ELF libraries via `--library-dir` and bundles them with execution wrappers. Missing libraries are never downloaded automatically; ABI mismatches must be handled separately.
 - **FHS Directory Normalization:** Seamlessly bridges path discrepancies between distributions (e.g. `/usr/lib64` <-> `/usr/lib/x86_64-linux-gnu` <-> `/usr/lib`) and patches `.desktop`, `.service`, and `.pc` files.
 - **AST Shell Script Transpilation:** Parses maintainer scripts (`preinst`, `postinst`, `prerm`, `postrm`) into Abstract Syntax Trees with `mvdan.cc/sh/v3/syntax`. Converts legacy service managers (`chkconfig`, `service`) to `systemctl`, adapts distro-specific `useradd` flags, and cleans redundant `ldconfig` invocations.
-- **Android APK Bridging:** Extracts Android APKs, parses binary XML (`AndroidManifest.xml`), and creates native desktop entries and Waydroid / ATL execution launchers.
+- **Android APK Bridging:** Preserves the original APK without re-encoding or duplicating it into staging, parses the manifest and creates desktop entries and Waydroid launchers.
 - **Source Tarball Building:** Detects and compiles Go, Cargo, CMake, Make, and Meson projects into isolated staging environments.
 
 ---
@@ -44,7 +44,7 @@ M.U.T.A.T.E. inspects ELF binaries, resolves missing shared libraries (`.so`) di
 | **Alpine Linux** | `.apk` | ✅ | ✅ |
 | **Android APK** | `.apk` (with `AndroidManifest.xml`) | ✅ | ➔ Waydroid launcher |
 | **Source Tarball** | `.tar.gz`, `.tar.xz`, `.tar.zst` | ✅ | Opt-in build (`--allow-source-build`) |
-| **AppImage** | `.AppImage` (Types 1 and 2 ELF) | ✅ via `bsdtar` / `unsquashfs` | ✅ wrapper + AppDir |
+| **AppImage** | `.AppImage` (Types 1 and 2 ELF) | Optional via `--extract` | ✅ original file + `.desktop` by default |
 
 ---
 
@@ -100,7 +100,7 @@ mut build app.apk --to deb
 - Source builds require `--allow-source-build`, Bubblewrap and user namespaces; compilation runs inside an offline sandbox. Use trusted sources and dependencies.
 - Missing shared objects fail with a clear error unless explicitly supplied via `--library-dir /path/to/libs`. Supplied libraries must be valid ELF files with matching SONAME and architecture.
 - Cross-distribution conversions involving untranslated package dependencies or lifecycle scripts **fail closed** rather than silently emitting an incorrect package. To resolve target packages, run on the target distribution; same-format repackaging can preserve existing dependency metadata.
-- Alpine package handling does not imply glibc/musl binary compatibility. Generic ZIPs and nonstandard AppImages (Type 0) cannot currently be converted.
+- Self-contained artifacts recognized today: AppImage Types 1/2 and Android APK (requires Waydroid). Regular DEB/RPM/Arch/Alpine packages and source tarballs are **not** presumed self-contained. Generic ZIPs and nonstandard AppImages (Type 0) remain unsupported.
 - `install --dry-run` prints the intended operation and does not build, compile, or install. It is a plan, not a compatibility guarantee.
 
 ### 3. Direct Installation on Host
@@ -149,9 +149,13 @@ go test -v ./...
 
 This project is licensed under the GPL-3.0 License. See [LICENSE](LICENSE) for details.
 
-### AppImage Type 1 and Type 2 conversion
+### Self-contained applications: preserve by default
 
-`mutate build program.AppImage --to deb -o program.deb` supports **Type 1** (ISO9660 with Rock Ridge, extracted by `bsdtar` from `libarchive-tools`) and **Type 2** (SquashFS v4, extracted by `unsquashfs` from `squashfs-tools`). Type 1 identification accepts both `AI\\x01` and older ELF+ISO9660 images without that marker. Both paths extract *without executing the AppImage runtime*, install the AppDir under `/opt/<name>`, and create a launcher for `AppRun`. Type 0/nonstandard formats are not supported. The external extractors must be installed separately. Always test runtime and library compatibility on the target distribution.
+`mutate build program.AppImage --to deb -o program.deb` stores the **original AppImage** unchanged under `/opt/mutate/appimages/<name>/<name>.AppImage` and installs a `.desktop` shortcut in `/usr/share/applications`. This is the default for **both Type 1 and Type 2**, requires **no extraction utility**, and does not copy large binary files into temporary staging. The original runtime, dependencies, FUSE requirements and update behavior are unchanged. A generic desktop icon is used unless a separate integration is provided.
+
+`mutate build program.AppImage --to deb --extract` opts into the old workflow: Type 1 uses `bsdtar` for ISO9660/Rock Ridge and Type 2 uses `unsquashfs` for SquashFS. `inspect` and `install` also accept `--extract` to enable deep AppImage inspection/conversion. External utilities are only required in this mode.
+
+Android APKs are already kept intact as `.apk` files with a Waydroid launcher and desktop shortcut. APKs require Waydroid and are **not** native Linux executables. These two source formats implement the same portable preservation contract. Other native package formats and source tarballs keep their existing unpack/convert behavior because an archive is not necessarily a portable application.
 
 ### Sandboxed source builds
 

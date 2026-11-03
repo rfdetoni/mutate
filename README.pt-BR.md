@@ -29,7 +29,7 @@ O M.U.T.A.T.E. inspeciona cabeçalhos ELF, resolve dependências reversas por bi
 - **Isolamento explícito de bibliotecas:** Recebe bibliotecas ELF via `--library-dir`, verifica seu formato e SONAME e cria wrappers quando necessário. Não baixa bibliotecas automaticamente nem garante compatibilidade ABI.
 - **Normalização FHS:** Converte layouts de diretórios entre distribuições (ex: `/usr/lib64` <-> `/usr/lib/x86_64-linux-gnu` <-> `/usr/lib`) e atualiza automaticamente caminhos hardcoded em arquivos `.desktop`, `.service` e `.pc`.
 - **Transpilação de Scripts via AST:** Parseia scripts de instalação (`preinst`, `postinst`, `prerm`, `postrm`) em Árvore de Sintaxe Abstrata (AST) com `mvdan.cc/sh/v3/syntax`. Converte comandos legados de serviço (`chkconfig`, `service`) para `systemctl`, adapta flags do `useradd` e remove chamadas redundantes a `ldconfig`.
-- **Ponte para APKs Android:** Extrai APKs do Android, decodifica o `AndroidManifest.xml` binário (AXML) e cria launchers nativos integrados ao Waydroid / ATL com entradas `.desktop` e ícones.
+- **Ponte para APKs Android:** Mantém o arquivo APK original sem reempacotar recursos, lê o `AndroidManifest.xml` e cria launchers para Waydroid com `.desktop` e ícone.
 - **Compilação de Tarballs Fonte:** Detecta e compila projetos em Go, Cargo, CMake, Make e Meson em ambiente de staging isolado.
 
 ---
@@ -44,7 +44,7 @@ O M.U.T.A.T.E. inspeciona cabeçalhos ELF, resolve dependências reversas por bi
 | **Alpine Linux** | `.apk` | ✅ | ✅ |
 | **Android APK** | `.apk` (com `AndroidManifest.xml`) | ✅ | ➔ Launcher Waydroid |
 | **Tarball Fonte** | `.tar.gz`, `.tar.xz`, `.tar.zst` | ✅ | ➔ Pacote nativo |
-| **AppImage** | `.AppImage` (ELF Tipos 1 e 2) | ✅ (`bsdtar`/`unsquashfs`) | ➔ Pacote nativo |
+| **AppImage** | `.AppImage` (ELF Tipos 1 e 2) | Opcional (`--extract`) | ➔ Original + `.desktop` (padrão) |
 
 ---
 
@@ -153,6 +153,23 @@ Distribuído sob a licença GPL-3.0. Consulte o arquivo [LICENSE](LICENSE) para 
 
 ## AppImage, compilação isolada e dependências entre distribuições
 
-- **AppImage Type 1 e Type 2:** `mutate build app.AppImage --to deb` usa `bsdtar` (`libarchive-tools`) para Type 1/ISO9660 com Rock Ridge e `unsquashfs` (`squashfs-tools`) para Type 2/SquashFS. Detecta Type 1 com e sem assinatura `AI\\x01`. Não executa o runtime do AppImage, preserva AppDir em `/opt/<nome>` e cria um lançador `AppRun`. Verifique a compatibilidade no destino.
+- **AppImage Types 1 e 2:** o padrão é preservar o arquivo original em `/opt/mutate/appimages/<nome>/<nome>.AppImage` e criar o atalho em `/usr/share/applications/<nome>.desktop`, sem executar nem extrair o AppImage. Para extrair e reconstruir, use `--extract` (Type 1 requer `bsdtar`; Type 2 requer `unsquashfs`). O ícone padrão é genérico. As exigências originais de runtime/FUSE continuam válidas.
 - **Build isolado:** `--allow-source-build` exige `bubblewrap` com user namespaces. Sem sandbox a compilação não acontece; a rede fica indisponível e só o staging pode ser escrito.
 - **Dependências entre distros:** `--dependency-map deps.json` recebe um objeto JSON com nomes de pacotes origem/destino e chaves `so:lib.so.N`. A tradução de scripts é conservadora; hooks sem equivalência segura geram erro.
+
+### Estratégia de preservação dos pacotes autocontidos
+
+- **AppImage Type 1 e Type 2:** preserva o binário original, gera `.desktop`; `--extract` permite conversão por extração.
+- **APK Android:** preserva o arquivo `.apk` original e gera lançador para Waydroid, mantendo seus requisitos externos.
+- **DEB/RPM/Arch/Alpine e tarballs de código-fonte:** continuam sujeitos à extração e conversão tradicional, pois não é seguro presumir que sejam autocontidos.
+
+Exemplos:
+
+```bash
+mutate build aplicativo.AppImage --to deb
+mutate build aplicativo.AppImage --to rpm --extract
+mutate install aplicativo.AppImage
+mutate inspect aplicativo.AppImage --extract
+```
+
+O empacotamento referencia diretamente o arquivo de origem; não realiza cópia intermediária desnecessária. A instalação cria os arquivos de destino com o gerenciador de pacotes nativo.

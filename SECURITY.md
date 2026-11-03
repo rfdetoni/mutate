@@ -21,3 +21,11 @@ M.U.T.A.T.E. parses third-party package archives and can install packages as roo
 - Archives may consume significant disk space; run with limited permissions and filesystem quotas for untrusted content.
 
 Report security issues privately to the repository owner rather than filing a public exploit report.
+
+## Preserved portable artifacts
+
+- AppImage Type 1/2 preservation is now the default. It copies the original executable into the native package and installs a freedesktop launcher; it does **not** execute it during build or inspect.
+- The AppImage's own runtime, FUSE requirements, upstream updates, and security characteristics remain unchanged; desktop launch executes untrusted code only when the user opens it.
+- The extractor path remains explicitly available through `--extract`. Use low-privilege accounts and quotas for parsing untrusted ISO9660 or SquashFS.
+- Android APKs are stored intact for Waydroid. Waydroid must be installed; they cannot be run as native Linux binaries.
+- Native package archives and source tarballs must not be automatically treated as self-contained executable applications.
