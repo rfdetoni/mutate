@@ -256,16 +256,17 @@ O modo padrão não coleta essas medições. Para comparar versões em pacotes r
 
 ## Interface gráfica integrada (Linux)
 
-O **mesmo executável Go**, sem CGO, inclui agora uma interface gráfica
-flat e compacta. HTML/CSS/JavaScript são incorporados ao binário, sem
-aplicação GUI separada, GTK/WebKit obrigatório, dependências de CDN ou
-serviço externo. Os comandos atuais `inspect`, `build` e `install`
-permanecem inalterados.
+O executável CLI Go continua compilado **sem CGO**. Quando GTK/WebKit está
+disponível, o instalador também compila `mutate-gui`, uma janela **Wails
+v3 nativa**, sem precisar de Chrome/Chromium. A interface HTML/CSS/JS
+continua embutida no motor. Se as bibliotecas da GUI estiverem ausentes,
+a CLI funciona normalmente e o navegador fica como alternativa.
 
 ```sh
-mutate gui                      # abre uma janela de aplicativo quando Chromium está disponível
+mutate gui                      # abre janela Wails quando instalada
 mutate gui --register           # cadastra o atalho no menu de aplicativos Linux
-mutate gui --no-browser         # imprime a URL local sem abrir o navegador
+mutate gui --browser            # força alternativa pelo navegador
+mutate gui --no-browser         # disponibiliza URL local sem abrir janela
 ```
 
 O instalador agora **registra automaticamente** o M.U.T.A.T.E. no menu
@@ -294,32 +295,30 @@ A interface usa HTTP **somente em 127.0.0.1**, com um caminho de sessão
 aleatório e cabeçalho obrigatório para alterações. Arquivos ficam em
 diretório temporário privado (excluído ao encerrar); upload máximo de
 2 GiB. Compilação de código-fonte continua opt-in e isolada. Progresso
-indica apenas fases reais, sem percentuais fictícios. Navegadores
-Chromium/Brave/Chrome podem abrir em modo janela; os demais usam aba do
-navegador padrão. Para desktop sem navegador automático use
-`--no-browser` e abra a URL local exibida.
+indica apenas fases reais, sem percentuais fictícios. Quando o shell Wails estiver instalado, a interface abre como
+aplicativo desktop independente. Sem dependências GTK/WebKit de compilação,
+o navegador pode ser usado como alternativa. Para uso headless, utilize
+`--no-browser`.
 
 As regras de design e comportamento estão em [DESIGN.md](DESIGN.md) e
 [UX-CONTRACT.md](UX-CONTRACT.md).
 
 ### Biblioteca de aplicativos
 
-A aba **Biblioteca** consulta os repositórios habilitados na distribuição
-Linux atual: APT (Debian/Ubuntu), DNF (Fedora/RHEL), pacman (Arch) ou APK
-(Alpine). Opcionalmente, pesquisa o [AUR via RPC v5](https://wiki.archlinux.org/title/Aurweb_RPC_interface)
-para mostrar aplicações mantidas pela comunidade. A consulta online ao
-AUR é indicada explicitamente na tela.
+A **Biblioteca** pesquisa os repositórios nativos da distribuição atual
+(APT, DNF, pacman ou APK) e, em paralelo, as APIs públicas do **AUR**,
+**Arch oficial** e **Debian Sources**. Os pacotes nativos aparecem primeiro
+e podem ser instalados com confirmação e PolicyKit. Resultados remotos são
+**somente para descoberta**, sem execução automática de PKGBUILDs.
 
-Os pacotes **nativos têm prioridade**, com a versão *candidata* definida
-pelo próprio gerenciador de pacotes do sistema (repositórios e prioridades
-configurados). Não é correto comparar versões de distribuições diferentes
-como se fossem sempre compatíveis. Para manter o desempenho, cada busca
-exibe até 30 resultados nativos e 20 do AUR; refine o termo se necessário.
+A tela **Repositórios** mostra o estado de cada catálogo, permite
+ativar/desativar fontes, atualizar, remover fontes adicionadas e cadastrar
+novas APIs JSON HTTPS. Endereço customizado: `https://exemplo.org/search?q={query}`.
+Resposta esperada: `{"results":[{"name":"app","version":"1.0","description":"...","url":"https://..."}]}`.
+O cadastro persiste em `~/.config/mutate/repositories.json` ou no
+`XDG_CONFIG_HOME` configurado. **Não altera** `/etc/apt`, DNF, pacman ou APK.
 
-Instalar um resultado nativo exige confirmação e autorização de
-administrador via PolicyKit. Os resultados do **AUR são apenas
-referências**, com link para inspecionar a receita PKGBUILD manualmente:
-o M.U.T.A.T.E. não executa scripts comunitários automaticamente. O
-catálogo pesquisa o índice habilitado no host e o AUR, mas não promete
-cobertura universal de todos os repositórios Debian/Fedora/Arch
-existentes na internet.
+Ao abrir a interface, as fontes remotas são consultadas em segundo plano
+e em paralelo, com indicação de atualização e falhas. A versão instalada
+continua sendo a candidata definida pelo gerenciador do Linux atual;
+versões de distribuições diferentes não são consideradas intercambiáveis.

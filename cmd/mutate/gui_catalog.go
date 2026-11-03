@@ -155,6 +155,7 @@ func (a *guiApp) handleRepositoriesCreate(w http.ResponseWriter, r *http.Request
  if err:=catalog.ValidateCustomRemote(payload.Name,payload.URL);err!=nil{guiError(w,400,err.Error());return}
  source,err:=a.repositories.Add(payload.Name,payload.URL)
  if err!=nil{guiError(w,400,err.Error());return}
+ a.repositories.StartupRefresh()
  guiJSON(w,201,source)
 }
 
@@ -169,6 +170,7 @@ func (a *guiApp) handleRepositoriesToggle(w http.ResponseWriter,r *http.Request)
  if err:=a.repositories.SetEnabled(r.PathValue("id"),*payload.Enabled);err!=nil{
   guiError(w,400,err.Error());return
  }
+ if *payload.Enabled{a.repositories.StartupRefresh()}
  guiJSON(w,200,map[string]bool{"updated":true})
 }
 

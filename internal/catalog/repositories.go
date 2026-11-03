@@ -193,7 +193,7 @@ func (m *RepositoryManager)Remove(id string)error{
   removed:=m.sources[i]
   m.sources=append(m.sources[:i],m.sources[i+1:]...)
   if err:=m.saveLocked();err!=nil{
-   m.sources=append(m.sources,nilSource())
+   m.sources=append(m.sources,Source{})
    copy(m.sources[i+1:],m.sources[i:])
    m.sources[i]=removed
    return err
@@ -203,8 +203,6 @@ func (m *RepositoryManager)Remove(id string)error{
  }
  return fmt.Errorf("repositório não encontrado")
 }
-func nilSource()Source{return Source{}}
-
 func (m *RepositoryManager)updateStatus(id,status,message string,apps []App,query string){
  m.mu.Lock()
  defer m.mu.Unlock()
@@ -324,7 +322,7 @@ func (m *RepositoryManager)searchOne(ctx context.Context,source Source,query str
  case "aur":
   return searchAUR(ctx,query,m.client,source.Endpoint)
  case "arch":
-  endpoint=source.Endpoint+"?q="+url.QueryEscape(query)+"&arch=x86_64&arch=any"
+  endpoint=source.Endpoint+"?q="+url.QueryEscape(query)+"&arch="+url.QueryEscape(hostArch())+"&arch=any"
  case "debian":
   endpoint=source.Endpoint+url.PathEscape(query)+"/"
  case "json":
@@ -416,7 +414,9 @@ func ValidateCustomRemote(name,endpoint string)error{
  // DNS check guards typical private/intranet endpoints. Redirects are disabled
  // in the default client. Results are metadata-only and never executed.
  u,_:=url.Parse(strings.ReplaceAll(endpoint,"{query}","mutate"))
- addresses,err:=net.DefaultResolver.LookupNetIP(context.Background(),"ip",u.Hostname())
+ lookupCtx,cancel:=context.WithTimeout(context.Background(),3*time.Second)
+ defer cancel()
+ addresses,err:=net.DefaultResolver.LookupNetIP(lookupCtx,"ip",u.Hostname())
  if err!=nil{return fmt.Errorf("não foi possível resolver o endereço do repositório: %w",err)}
  for _,addr:=range addresses{
   if addr.IsPrivate()||addr.IsLoopback()||addr.IsLinkLocalUnicast()||addr.IsUnspecified(){return fmt.Errorf("endereço DNS resolve para rede local")}
