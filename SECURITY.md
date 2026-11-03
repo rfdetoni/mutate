@@ -53,3 +53,8 @@ The runtime preflight reports whether Waydroid is available on PATH or whether c
 - `SourcePath` can point to an immutable original outside the private staging directory. FHS library relocation only changes destination metadata and never moves or rewrites the payload source. For configuration content changes, external files are copied on demand into private staging and only that private copy is rewritten. Symlink sources are rejected for relocated regular files.
 - The package builder checks intermediate representation destinations and entry consistency before passing them to the native packager.
 - These checks do not sandbox an installed application's runtime, and they do not replace safe handling of untrusted source archives.
+
+## ELF inspection and package-provider lookup
+
+- `inspect --no-resolve` performs the full package extraction and ELF analysis but does not execute package-manager fallback commands to identify host SONAME providers. It does not bypass archive extraction bounds, ELF parsing, or package validation.
+- Standard `inspect` continues host-library lookup; batch scanning of local databases does not change the first-match provider semantics. System package queries are never a substitute for checking the final target host.

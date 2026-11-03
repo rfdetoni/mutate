@@ -21,3 +21,9 @@ The script alternates execution order between versions, uses unique output files
 To see where time goes, set `MUTATE_TIMINGS=1` on the **optimized** executable. This prints `detect`, `unpack`, `elf`, `dependencies`, `fhs`, `scripts` and `package` durations to stderr. Keep profiling disabled for the timing comparison so logging does not distort measurements.
 
 Run benchmarks on the same filesystem, after building both binaries with the same Go version and compiler flags. Record machine, distribution, package corpus, CPU power policy, and repeats. A microbenchmark or CI pass does **not** establish end-to-end speed improvement.
+
+## Investigating mixed-package latency
+
+The comparator prints p50 and p95 for every package separately and the median percentage change across packages. The historical pooled median can shift when the workload contains a mix of cheap native inspections and expensive packages with large ELF payloads or provider lookups. Examine per-package changes before interpreting the pooled p50 as a regression.
+
+Use `MUTATE_TIMINGS=1 mutate inspect package.deb` for the breakdown including cleanup. Then compare `mutate inspect package.deb --no-resolve` against the default to isolate the **host dependency resolver** from the archive extraction and ELF scan. Both paths still validate the package content; only the external provider lookup is skipped. No real-world speedup is claimed without rerunning the same ten-package corpus.

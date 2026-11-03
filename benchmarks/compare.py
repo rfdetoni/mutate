@@ -79,22 +79,43 @@ def main():
 
     print(f"packages={len(packages)} runs={args.runs} warmup={args.warmup} "
           f"target={args.target}", flush=True)
-    print("operation         before p50 / p95    after p50 / p95      p50 change")
+    print("Each package gets the same number of A/B samples. Pooled p50/p95 can "
+          "move when the mix contains slow and fast packages; check per-package "
+          "changes before concluding there is a regression.", flush=True)
+
     for operation in args.operations:
         previous, optimized = [], []
+        rows = []
+        deltas = []
         for pkg in packages:
+            package_before, package_after = [], []
             for n in range(args.warmup + args.runs):
                 # Alternate A/B order to reduce cold-cache and CPU-frequency bias.
                 order = (0, 1) if n % 2 == 0 else (1, 0)
                 for index in order:
                     measured = run(binaries[index], operation, pkg, args.target, args.build_arg)
                     if n >= args.warmup:
-                        (previous if index == 0 else optimized).append(measured)
+                        (package_before if index == 0 else package_after).append(measured)
+            previous.extend(package_before)
+            optimized.extend(package_after)
+            before50 = statistics.median(package_before)
+            after50 = statistics.median(package_after)
+            delta = (after50 / before50 - 1) * 100 if before50 else float("nan")
+            deltas.append(delta)
+            rows.append((Path(pkg).name, before50, percentile(package_before, .95),
+                         after50, percentile(package_after, .95), delta))
+
         before50, after50 = statistics.median(previous), statistics.median(optimized)
         before95, after95 = percentile(previous, .95), percentile(optimized, .95)
-        delta = (after50 / before50 - 1) * 100 if before50 else float("nan")
-        print(f"{operation:<16} {before50:8.2f} / {before95:8.2f} ms  "
-              f"{after50:8.2f} / {after95:8.2f} ms   {delta:+8.1f}%", flush=True)
+        pooled_delta = (after50 / before50 - 1) * 100 if before50 else float("nan")
+        median_delta = statistics.median(deltas)
+        print(f"\n{operation}: pooled p50 {before50:.2f} -> {after50:.2f} ms "
+              f"({pooled_delta:+.1f}%), p95 {before95:.2f} -> {after95:.2f} ms; "
+              f"median package delta {median_delta:+.1f}%", flush=True)
+        print("  package                          before p50 / p95       after p50 / p95     delta")
+        for name, b50, b95, a50, a95, change in rows:
+            print(f"  {name:<32} {b50:7.2f} / {b95:7.2f} ms "
+                  f"{a50:7.2f} / {a95:7.2f} ms {change:+7.1f}%", flush=True)
 
 
 if __name__ == "__main__":
