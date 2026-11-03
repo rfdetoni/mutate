@@ -70,3 +70,11 @@ row shows application name, short description, origin (native repository
 versus community AUR), candidate version and a contextual action. Native
 packages use the existing positive/neutral tokens; AUR remains visually
 subordinate and does not pretend to be an official trusted repository.
+
+## Approved application icon and simplified chrome
+The approved icon is the violet package-and-rotation-arrow mark, embedded at
+`cmd/mutate/ui/mutate.png` and in the native Wails shell. The title bar
+shows only the app name and functional close control. Do not add technical
+footer copy such as "CLI + GUI", "local tool" or "local session". Keep
+repository management a flat row list with status, enable switch and one
+compact creation form. The same violet/neutral tokens own both screens.

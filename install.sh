@@ -13,6 +13,7 @@ REGISTER_DESKTOP=${MUTATE_INSTALL_DESKTOP:-1}
 DESKTOP_SCOPE=auto
 RELEASES=${MUTATE_RELEASE_BASE_URL:-https://github.com/$REPO/releases}
 SOURCE_URL=${MUTATE_SOURCE_URL:-https://codeload.github.com/$REPO/tar.gz/refs/heads/$REF}
+GUI_BINARY=
 
 say() { printf '%s\n' "==> $*" >&2; }
 warn() { printf '%s\n' "WARN: $*" >&2; }
@@ -129,11 +130,17 @@ download_release() {
     verify "$WORK/$asset" "$hash"
 
     members=$(tar -tzf "$WORK/$asset") || die "invalid release archive"
-    [ "$members" = mutate ] || die "unexpected release archive entries"
+    case "$members" in
+        mutate|$(printf 'mutate\nmutate-gui')|$(printf 'mutate-gui\nmutate')) ;;
+        *) die "unexpected release archive entries" ;;
+    esac
     mkdir -p "$WORK/prebuilt"
     tar -xzf "$WORK/$asset" -C "$WORK/prebuilt" || die "cannot unpack release archive"
     [ -f "$WORK/prebuilt/mutate" ] && [ ! -L "$WORK/prebuilt/mutate" ] || die "release binary is not a regular file"
     SOURCE_BINARY="$WORK/prebuilt/mutate"
+    if [ -f "$WORK/prebuilt/mutate-gui" ] && [ ! -L "$WORK/prebuilt/mutate-gui" ]; then
+        GUI_BINARY="$WORK/prebuilt/mutate-gui"
+    fi
     return 0
 }
 
@@ -185,6 +192,32 @@ bootstrap_go() {
     [ -x "$GO_BIN" ] || die "downloaded Go toolchain is not executable"
 }
 
+build_desktop_shell() {
+    [ -f "$SRC/desktop/go.mod" ] || return 0
+    [ "$ARCH" != unknown ] || return 0
+    if ! command -v pkg-config >/dev/null 2>&1 || ! command -v gcc >/dev/null 2>&1; then
+        warn "native Wails GUI requires gcc and pkg-config; CLI still works"
+        return 0
+    fi
+    gui_tags=
+    if pkg-config --exists gtk4 webkitgtk-6.0 2>/dev/null; then
+        gui_tags=
+    elif pkg-config --exists gtk+-3.0 webkit2gtk-4.1 2>/dev/null; then
+        gui_tags="-tags=gtk3"
+    else
+        warn "native GUI requires GTK4/WebKitGTK 6.0 (or GTK3/WebKitGTK 4.1); using browser fallback"
+        return 0
+    fi
+    say "Building native Wails desktop window..."
+    if (cd "$SRC/desktop" && unset GOROOT GOTOOLDIR &&
+        GOTOOLCHAIN=local "$GO_BIN" mod tidy &&
+        CGO_ENABLED=1 GOOS=linux GOTOOLCHAIN=local "$GO_BIN" build ${gui_tags:+"$gui_tags"} -trimpath -ldflags="-s -w" -o "$WORK/mutate-gui" .); then
+        [ -s "$WORK/mutate-gui" ] && GUI_BINARY="$WORK/mutate-gui"
+    else
+        warn "native Wails build failed; CLI remains available, browser fallback remains optional"
+    fi
+}
+
 build_from_source() {
     if [ "$VERSION" != latest ] && [ "$METHOD" != source ]; then
         die "release $VERSION is unavailable; will not silently substitute main branch"
@@ -217,6 +250,7 @@ build_from_source() {
         die "Go build failed with toolchain $actual"
     [ -s "$WORK/mutate" ] || die "build produced no binary"
     SOURCE_BINARY="$WORK/mutate"
+    build_desktop_shell
 }
 
 case "$METHOD" in
@@ -283,6 +317,21 @@ else
     fi
 fi
 
+# Install the optional native shell alongside the CLI. The CLI is always
+# usable even when the host lacks GTK/WebKit build dependencies.
+if [ -n "$GUI_BINARY" ]; then
+    gui_new="$DEST/.mutate-gui-new-$$"
+    if [ -n "$PRIV" ]; then
+        sudo cp "$GUI_BINARY" "$gui_new" && sudo chmod 0755 "$gui_new" &&
+            sudo mv -f "$gui_new" "$DEST/mutate-gui" ||
+            warn "could not install native GUI; CLI remains available"
+    else
+        cp "$GUI_BINARY" "$gui_new" && chmod 0755 "$gui_new" &&
+            mv -f "$gui_new" "$DEST/mutate-gui" ||
+            warn "could not install native GUI; CLI remains available"
+    fi
+fi
+
 say "Installed: $DEST/mutate"
 say "Alias:     $DEST/mut (unless previously occupied)"
 case ":$PATH:" in
@@ -321,6 +370,9 @@ register_desktop() {
     fi
 
     if [ "$scope" = system ]; then
+        # The installer uses umask 077 for downloads; system menu paths must
+        # remain traversable to other desktop users.
+        umask 022
         applications=/usr/local/share/applications
     else
         [ -n "${HOME:-}" ] || { warn "HOME is not set; cannot register a user launcher"; return 1; }
@@ -332,6 +384,34 @@ register_desktop() {
         applications="$data_home/applications"
     fi
 
+    # Prefer the approved embedded app icon; release and source installations
+    # both obtain it from the installed CLI without additional network calls.
+    icon_name=package-x-generic
+    if "$DEST/mutate" gui --export-icon "$WORK/mutate-icon.png" >/dev/null 2>&1 &&
+       [ -s "$WORK/mutate-icon.png" ]; then
+        if [ "$scope" = system ]; then
+            icon_dir=/usr/local/share/icons/hicolor/64x64/apps
+        else
+            icon_dir="$(dirname "$applications")/icons/hicolor/64x64/apps"
+        fi
+        if [ "$scope" = system ] && [ "$(id -u)" -ne 0 ] &&
+           [ ! -w "$(dirname "$icon_dir")" ]; then
+            icon_install_priv=$PRIV
+        else
+            icon_install_priv=
+        fi
+        if [ -n "$icon_install_priv" ]; then
+            "$icon_install_priv" mkdir -p "$icon_dir" &&
+                "$icon_install_priv" cp "$WORK/mutate-icon.png" "$icon_dir/mutate.png" &&
+                "$icon_install_priv" chmod 0644 "$icon_dir/mutate.png" &&
+                icon_name=mutate
+        elif mkdir -p "$icon_dir" 2>/dev/null &&
+             cp "$WORK/mutate-icon.png" "$icon_dir/mutate.png" 2>/dev/null; then
+            chmod 0644 "$icon_dir/mutate.png"
+            icon_name=mutate
+        fi
+    fi
+
     cat > "$WORK/mutate.desktop" <<EOF
 [Desktop Entry]
 Version=1.0
@@ -339,7 +419,7 @@ Type=Application
 Name=M.U.T.A.T.E.
 Comment=Conversor e instalador de pacotes Linux
 Exec="$binary" gui
-Icon=package-x-generic
+Icon=$icon_name
 Terminal=false
 Categories=Utility;System;
 StartupNotify=true

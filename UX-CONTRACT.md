@@ -80,3 +80,20 @@ the Go motor cannot guarantee compatibility.
 - Source package-manager versions are not compared lexicographically
   across distros: the installed candidate is resolved by the host
   manager at installation time to honor repository priorities.
+
+## Native desktop and source management
+The CGO-free `mutate` binary serves the authenticated session; optional
+`mutate-gui` is a Wails v3 GTK/WebKit shell installed beside it.
+`mutate gui` prefers the native window, falling back to browser only when
+the native build/runtime is unavailable. A native window exit shuts down
+its local server and temporary data. No browser brand appears in the UI.
+
+The Repositories section is discovery-only. Built-in AUR, official Arch
+and Debian Sources APIs are enabled initially. User-provided HTTPS JSON
+catalogs must declare a `{query}` template and must be explicitly
+saved. Add/toggle/delete persist atomically under XDG config; built-ins
+can be disabled but not removed. Remote refresh runs concurrently on
+startup and never blocks the first paint. Show each source's update or
+error state, preserve native results on remote failure, and never install
+remote results without a separate compatibility/safety process. Only the
+current OS's configured package manager may install packages.

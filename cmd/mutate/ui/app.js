@@ -27,6 +27,10 @@ const app = {
   catalogSequence: 0,
   catalogAbort: null,
   catalogPending: null,
+  sources: [],
+  sourcesSignature: '',
+  repositoriesError: '',
+  repositoriesBusy: false,
 };
 
 const viewCopy = {
@@ -98,10 +102,11 @@ function setView(view) {
     if (active) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
-  const advanced = view === 'history' || view === 'settings' || view === 'library';
+  const advanced = view === 'history' || view === 'settings' || view === 'library' || view === 'repositories';
   $('workspace-view').hidden = advanced;
   $('history-view').hidden = view !== 'history';
   $('library-view').hidden = view !== 'library';
+  $('repositories-view').hidden = view !== 'repositories';
   $('settings-view').hidden = view !== 'settings';
   document.querySelector('.app-layout').classList.toggle('wide-view', advanced);
   if (!advanced) {
@@ -121,6 +126,12 @@ function setView(view) {
   if (view === 'library') {
     renderCatalog();
     $('library-title').focus({ preventScroll: true });
+    refreshRepositories();
+  }
+  if (view === 'repositories') {
+    renderRepositories();
+    $('repositories-title').focus({ preventScroll: true });
+    refreshRepositories();
   }
 }
 
@@ -288,9 +299,7 @@ function render() {
   if (app.view === 'history') renderHistory();
   renderCatalogStatus();
   refreshActions();
-  text('host-label', app.host
-    ? 'Sistema: ' + app.host + (app.nativeTarget ? ' · formato nativo: ' + app.nativeTarget.toUpperCase() : '')
-    : 'Sessão local');
+
 }
 
 function applyState(state) {
@@ -442,10 +451,10 @@ function renderCatalog() {
     return;
   }
   const native = app.catalog.filter((item) => item.native).length;
-  const aur = app.catalog.length - native;
+  const remote = app.catalog.length - native;
   summary.textContent = app.catalog.length
     ? app.catalog.length + ' resultados para "' + app.catalogQuery + '" · ' +
-      native + ' nativos · ' + aur + ' AUR'
+      native + ' nativos · ' + remote + ' remotos'
     : 'Nenhum pacote encontrado para "' + app.catalogQuery + '". Experimente outro termo.';
   results.replaceChildren();
   for (const item of app.catalog) {
@@ -459,7 +468,7 @@ function renderCatalog() {
     title.textContent = item.name;
     const badge = document.createElement('span');
     badge.className = 'catalog-source' + (item.native ? ' native' : '');
-    badge.textContent = item.native ? 'Nativo · ' + item.source : 'AUR · comunidade';
+    badge.textContent = item.native ? 'Nativo · ' + item.source : item.source;
     heading.append(title, badge);
     const description = document.createElement('p');
     description.className = 'catalog-app-description';
@@ -467,7 +476,7 @@ function renderCatalog() {
     const version = document.createElement('div');
     version.className = 'catalog-app-version';
     version.textContent = 'Versão: ' + (item.version || 'não informada') +
-      (item.native ? ' · ' + (item.repository || 'repositórios configurados') : ' · referência para Arch') +
+      (item.native ? ' · ' + (item.repository || 'repositórios configurados') : ' · catálogo remoto') +
       (item.out_of_date ? ' · sinalizado como desatualizado' : '');
     info.append(heading, description, version);
     const actions = document.createElement('div');
@@ -480,12 +489,12 @@ function renderCatalog() {
       install.disabled = app.busy || app.uploading;
       install.addEventListener('click', () => confirmCatalog(item));
       actions.append(install);
-    } else if (item.url && item.url.startsWith('https://aur.archlinux.org/packages/')) {
+    } else if (item.url && item.url.startsWith('https://')) {
       const link = document.createElement('a');
       link.href = item.url;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.textContent = 'Ver no AUR';
+      link.textContent = 'Ver detalhes';
       link.className = 'text-link';
       actions.append(link);
     }
@@ -511,9 +520,8 @@ async function searchCatalog(event) {
   app.catalogQuery = query;
   renderCatalog();
   try {
-    const includeAUR = $('catalog-aur').checked ? '1' : '0';
-    const response = await api('catalog?q=' + encodeURIComponent(query) +
-      '&aur=' + includeAUR, { signal: request.signal });
+    const response = await api('catalog?q=' + encodeURIComponent(query),
+      { signal: request.signal });
     if (current !== app.catalogSequence) return;
     app.catalog = response.apps || [];
     app.catalogWarnings = response.warnings || [];
@@ -563,6 +571,154 @@ async function installCatalog() {
     refreshActions();
   }
 }
+
+
+function sourceStatusLabel(status) {
+  return { ok:'Atualizado', updating:'Atualizando', idle:'Aguardando', error:'Falha', disabled:'Desativado' }[status] || 'Aguardando';
+}
+function renderRepositorySource(source) {
+  const row = document.createElement('div');
+  row.className = 'repo-row';
+  const info = document.createElement('div');
+  info.className = 'repo-info';
+  const heading = document.createElement('div');
+  heading.className = 'repo-title';
+  const name = document.createElement('strong');
+  name.textContent = source.name;
+  const tag = document.createElement('span');
+  tag.className = 'catalog-source';
+  tag.textContent = source.builtin ? 'Incluído' : 'Adicionado';
+  heading.append(name, tag);
+  const description = document.createElement('div');
+  description.className = 'repo-endpoint';
+  description.textContent = source.endpoint;
+  const status = document.createElement('div');
+  status.className = 'repo-status status-' + source.status;
+  status.textContent = sourceStatusLabel(source.status);
+  if (source.updated_at && source.status === 'ok') {
+    status.textContent += ' · ' + new Date(source.updated_at).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+  }
+  if (source.error) {
+    status.title = source.error;
+    status.textContent += ' · ' + source.error;
+  }
+  info.append(heading, description, status);
+  const actions = document.createElement('div');
+  actions.className = 'repo-controls';
+  const toggle = document.createElement('input');
+  toggle.type = 'checkbox';
+  toggle.checked = source.enabled;
+  toggle.setAttribute('aria-label', 'Ativar ' + source.name);
+  toggle.addEventListener('change', async () => {
+    toggle.disabled = true;
+    try {
+      await api('repositories/' + encodeURIComponent(source.id) + '/enabled', {
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({enabled:toggle.checked}),
+      });
+      await refreshRepositories();
+    } catch (error) {
+      app.repositoriesError = error.message;
+      toggle.checked = source.enabled;
+      renderRepositories();
+    } finally { toggle.disabled = false; }
+  });
+  actions.append(toggle);
+  if (!source.builtin) {
+    const remove = document.createElement('button');
+    remove.className = 'action-btn secondary repo-remove';
+    remove.textContent = 'Remover';
+    remove.type = 'button';
+    remove.addEventListener('click', async () => {
+      if (!window.confirm('Remover o catálogo "' + source.name + '"?')) return;
+      remove.disabled = true;
+      try {
+        await api('repositories/' + encodeURIComponent(source.id), {method:'DELETE'});
+        await refreshRepositories();
+      } catch (error) {
+        app.repositoriesError = error.message;
+        renderRepositories();
+        remove.disabled = false;
+      }
+    });
+    actions.append(remove);
+  }
+  row.append(info, actions);
+  return row;
+}
+
+function renderRepositories() {
+  const box = $('repos-list');
+  const errorBox = $('repos-error');
+  errorBox.hidden = !app.repositoriesError;
+  errorBox.textContent = app.repositoriesError;
+  $('repo-add-btn').disabled = app.repositoriesBusy;
+  if (app.sourcesSignature === JSON.stringify(app.sources) && box.childNodes.length) return;
+  app.sourcesSignature = JSON.stringify(app.sources);
+  box.replaceChildren();
+  for (const source of app.sources) box.append(renderRepositorySource(source));
+  const enabled = app.sources.filter(source => source.enabled);
+  const updating = enabled.filter(source => source.status === 'updating').length;
+  const ok = enabled.filter(source => source.status === 'ok').length;
+  $('source-inline-status').textContent = updating
+    ? 'Atualizando ' + updating + ' fonte(s) em segundo plano…'
+    : ok + ' fonte(s) remota(s) pronta(s) · ' + enabled.length + ' habilitada(s)';
+}
+
+async function refreshRepositories() {
+  try {
+    const response = await api('repositories');
+    const next = response.sources || [];
+    const signature = JSON.stringify(next);
+    if (signature !== app.sourcesSignature) {
+      app.sources = next;
+      app.sourcesSignature = '';
+      renderRepositories();
+    }
+  } catch (error) {
+    app.repositoriesError = error.message;
+    if (app.view === 'repositories') renderRepositories();
+  }
+}
+
+async function addRepository(event) {
+  event.preventDefault();
+  if (app.repositoriesBusy) return;
+  app.repositoriesBusy = true;
+  app.repositoriesError = '';
+  renderRepositories();
+  try {
+    await api('repositories', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        name:$('repo-name').value.trim(),
+        url:$('repo-url').value.trim(),
+      }),
+    });
+    $('repo-add-form').reset();
+    await refreshRepositories();
+  } catch (error) {
+    app.repositoriesError = error.message;
+  } finally {
+    app.repositoriesBusy = false;
+    renderRepositories();
+  }
+}
+
+async function refreshSourceCatalogs() {
+  $('repos-refresh').disabled = true;
+  try {
+    await api('repositories/refresh',{method:'POST'});
+    await refreshRepositories();
+    toast('Atualização dos catálogos iniciada.');
+  } catch (error) {
+    app.repositoriesError = error.message;
+    renderRepositories();
+  } finally { $('repos-refresh').disabled = false; }
+}
+$('repo-add-form').addEventListener('submit',addRepository);
+$('repos-refresh').addEventListener('click',refreshSourceCatalogs);
 
 $('catalog-form').addEventListener('submit', searchCatalog);
 $('cancel-catalog').addEventListener('click', () => {
@@ -632,3 +788,7 @@ document.addEventListener('visibilitychange', () => {
 
 setView('convert');
 refreshState();
+refreshRepositories();
+setInterval(() => {
+ if (!document.hidden && !app.repositoriesBusy) refreshRepositories();
+}, 3000);
