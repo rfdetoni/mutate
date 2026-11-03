@@ -44,7 +44,7 @@ M.U.T.A.T.E. inspects ELF binaries, resolves missing shared libraries (`.so`) di
 | **Alpine Linux** | `.apk` | ✅ | ✅ |
 | **Android APK** | `.apk` (with `AndroidManifest.xml`) | ✅ | ➔ Waydroid launcher |
 | **Source Tarball** | `.tar.gz`, `.tar.xz`, `.tar.zst` | ✅ | Opt-in build (`--allow-source-build`) |
-| **AppImage** | `.AppImage` (Type 2 ELF) | ✅ via `unsquashfs` | ✅ wrapper + AppDir |
+| **AppImage** | `.AppImage` (Types 1 and 2 ELF) | ✅ via `bsdtar` / `unsquashfs` | ✅ wrapper + AppDir |
 
 ---
 
@@ -100,7 +100,7 @@ mut build app.apk --to deb
 - Source builds require `--allow-source-build`, Bubblewrap and user namespaces; compilation runs inside an offline sandbox. Use trusted sources and dependencies.
 - Missing shared objects fail with a clear error unless explicitly supplied via `--library-dir /path/to/libs`. Supplied libraries must be valid ELF files with matching SONAME and architecture.
 - Cross-distribution conversions involving untranslated package dependencies or lifecycle scripts **fail closed** rather than silently emitting an incorrect package. To resolve target packages, run on the target distribution; same-format repackaging can preserve existing dependency metadata.
-- Alpine package handling does not imply glibc/musl binary compatibility. Generic ZIPs and type-1 AppImages cannot currently be converted.
+- Alpine package handling does not imply glibc/musl binary compatibility. Generic ZIPs and nonstandard AppImages (Type 0) cannot currently be converted.
 - `install --dry-run` prints the intended operation and does not build, compile, or install. It is a plan, not a compatibility guarantee.
 
 ### 3. Direct Installation on Host
@@ -149,9 +149,9 @@ go test -v ./...
 
 This project is licensed under the GPL-3.0 License. See [LICENSE](LICENSE) for details.
 
-### AppImage type 2 conversion
+### AppImage Type 1 and Type 2 conversion
 
-`mutate build program.AppImage --to deb -o program.deb` uses the optional `unsquashfs` command from `squashfs-tools`. It extracts a SquashFS v4 payload *without executing the AppImage runtime*, installs the AppDir under `/opt/<name>`, and creates a launcher for `AppRun`. Type 1 AppImage is not supported. Always test runtime compatibility on the target distribution.
+`mutate build program.AppImage --to deb -o program.deb` supports **Type 1** (ISO9660 with Rock Ridge, extracted by `bsdtar` from `libarchive-tools`) and **Type 2** (SquashFS v4, extracted by `unsquashfs` from `squashfs-tools`). Type 1 identification accepts both `AI\\x01` and older ELF+ISO9660 images without that marker. Both paths extract *without executing the AppImage runtime*, install the AppDir under `/opt/<name>`, and create a launcher for `AppRun`. Type 0/nonstandard formats are not supported. The external extractors must be installed separately. Always test runtime and library compatibility on the target distribution.
 
 ### Sandboxed source builds
 

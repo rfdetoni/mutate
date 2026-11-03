@@ -11,7 +11,7 @@ M.U.T.A.T.E. parses third-party package archives and can install packages as roo
 - Source builds require `--allow-source-build` and Linux Bubblewrap with user namespaces. Network and host write access are disabled by default; kernel exploits and toolchain vulnerabilities remain possible.
 - Automatic remote library downloading is disabled. Supply ELF libraries explicitly through `--library-dir`.
 - Cross-format dependencies and installer hooks that cannot be translated reliably are rejected.
-- AppImage type-2 extraction requires `unsquashfs`, which parses untrusted filesystem data; use a low-privilege account when handling untrusted files.
+- AppImage Type 1 extraction uses `bsdtar` (libarchive), with default path-traversal and symlink-ancestor protections enabled; Type 2 uses `unsquashfs`. Both parse untrusted filesystem data: use a low-privilege account with filesystem quotas. The embedded AppImage runtime is never executed.
 - A generated package can still execute maintainer scripts on the user's machine when installed. Inspect packages before installing; never trust conversion as a security guarantee.
 
 ## Known limits

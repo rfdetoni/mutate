@@ -44,7 +44,7 @@ O M.U.T.A.T.E. inspeciona cabeçalhos ELF, resolve dependências reversas por bi
 | **Alpine Linux** | `.apk` | ✅ | ✅ |
 | **Android APK** | `.apk` (com `AndroidManifest.xml`) | ✅ | ➔ Launcher Waydroid |
 | **Tarball Fonte** | `.tar.gz`, `.tar.xz`, `.tar.zst` | ✅ | ➔ Pacote nativo |
-| **AppImage** | `.AppImage` (ELF Tipo 2) | ✅ | ➔ Pacote nativo |
+| **AppImage** | `.AppImage` (ELF Tipos 1 e 2) | ✅ (`bsdtar`/`unsquashfs`) | ➔ Pacote nativo |
 
 ---
 
@@ -147,12 +147,12 @@ Distribuído sob a licença GPL-3.0. Consulte o arquivo [LICENSE](LICENSE) para 
 - A compilação de tarballs requer `--allow-source-build`, Bubblewrap e user namespaces; a execução ocorre em sandbox sem rede, sem fallback para o host.
 - Bibliotecas ELF ausentes exigem arquivos fornecidos pelo usuário em `--library-dir /caminho/libs`; bibliotecas sem formato ELF, SONAME ou arquitetura compatível são rejeitadas.
 - Dependências entre distribuições e scripts de instalação sem conversão segura são rejeitados; o sistema não gera deliberadamente pacotes com dependências falsas.
-- AppImage tipo 2 pode ser convertido via `unsquashfs`; AppImage tipo 1 e ZIP genérico não são suportados.
+- AppImage tipos 1 (ISO 9660) e 2 (SquashFS) podem ser convertidos com `bsdtar` ou `unsquashfs`, respectivamente. Type 0 e ZIP genérico não são suportados.
 - `install --dry-run` informa o plano, sem compilar nem instalar.
 - Use Go 1.26.4 ou posterior, de acordo com o `go.mod`.
 
 ## AppImage, compilação isolada e dependências entre distribuições
 
-- **AppImage tipo 2:** `mutate build app.AppImage --to deb` exige `unsquashfs` (pacote `squashfs-tools`). Extrai o SquashFS sem executar o runtime, preserva o AppDir em `/opt/<nome>` e cria um lançador `AppRun`. Verifique a compatibilidade no destino.
+- **AppImage Type 1 e Type 2:** `mutate build app.AppImage --to deb` usa `bsdtar` (`libarchive-tools`) para Type 1/ISO9660 com Rock Ridge e `unsquashfs` (`squashfs-tools`) para Type 2/SquashFS. Detecta Type 1 com e sem assinatura `AI\\x01`. Não executa o runtime do AppImage, preserva AppDir em `/opt/<nome>` e cria um lançador `AppRun`. Verifique a compatibilidade no destino.
 - **Build isolado:** `--allow-source-build` exige `bubblewrap` com user namespaces. Sem sandbox a compilação não acontece; a rede fica indisponível e só o staging pode ser escrito.
 - **Dependências entre distros:** `--dependency-map deps.json` recebe um objeto JSON com nomes de pacotes origem/destino e chaves `so:lib.so.N`. A tradução de scripts é conservadora; hooks sem equivalência segura geram erro.
