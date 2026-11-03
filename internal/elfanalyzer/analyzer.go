@@ -37,11 +37,11 @@ func AnalyzeELF(path string) (*domain.ElfInfo, error) {
 		return nil, fmt.Errorf("open elf %s: %w", path, err)
 	}
 	defer f.Close()
- return analyzeOpenedELF(f)
+	return analyzeOpenedELF(f)
 }
 
-func analyzeOpenedELF(f *elf.File) (*domain.ElfInfo,error) {
- info := &domain.ElfInfo{
+func analyzeOpenedELF(f *elf.File) (*domain.ElfInfo, error) {
+	info := &domain.ElfInfo{
 		Architecture: f.Machine.String(),
 	}
 
@@ -124,23 +124,33 @@ func AnalyzePackage(ir *domain.PackageIR) (*PackageAnalysisResult, error) {
 		}
 
 		// Open once: the previous flow opened every file for magic and
-        // then reopened ELF files for parsing. For many entries this doubles
-        // open/stat calls and produces unnecessary filesystem I/O.
-        file,err:=os.Open(filePath)
-        if err!=nil{return nil,fmt.Errorf("open package file %s: %w",destPath,err)}
-        var magic [4]byte
-        _,readErr:=io.ReadFull(file,magic[:])
-        if readErr!=nil||!bytes.Equal(magic[:],elfMagic){
-          _=file.Close()
-          continue
-        }
-        if _,err:=file.Seek(0,io.SeekStart);err!=nil{_ = file.Close();return nil,err}
-        elfFile,err:=elf.NewFile(file)
-        if err!=nil{_ = file.Close();return nil,fmt.Errorf("invalid ELF %s: %w",destPath,err)}
-        elfInfo,err:=analyzeOpenedELF(elfFile)
-        _=elfFile.Close()
-        _=file.Close()
-        if err!=nil{return nil,fmt.Errorf("analyze ELF %s: %w",destPath,err)}
+		// then reopened ELF files for parsing. For many entries this doubles
+		// open/stat calls and produces unnecessary filesystem I/O.
+		file, err := os.Open(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("open package file %s: %w", destPath, err)
+		}
+		var magic [4]byte
+		_, readErr := io.ReadFull(file, magic[:])
+		if readErr != nil || !bytes.Equal(magic[:], elfMagic) {
+			_ = file.Close()
+			continue
+		}
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			_ = file.Close()
+			return nil, err
+		}
+		elfFile, err := elf.NewFile(file)
+		if err != nil {
+			_ = file.Close()
+			return nil, fmt.Errorf("invalid ELF %s: %w", destPath, err)
+		}
+		elfInfo, err := analyzeOpenedELF(elfFile)
+		_ = elfFile.Close()
+		_ = file.Close()
+		if err != nil {
+			return nil, fmt.Errorf("analyze ELF %s: %w", destPath, err)
+		}
 
 		result.TotalELFs++
 		result.ElfDetails[destPath] = elfInfo

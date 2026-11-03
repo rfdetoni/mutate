@@ -45,8 +45,10 @@ func DecompressStream(r io.Reader, compType string) (io.ReadCloser, error) {
 
 // ExtractTarStream extracts a tar stream into targetDir safely preventing ZipSlip/path traversal.
 func ExtractTarStream(tr *tar.Reader, targetDir string, ir *domain.PackageIR) error {
-	budget,err:=newExtractionBudget()
- if err!=nil{return err}
+	budget, err := newExtractionBudget()
+	if err != nil {
+		return err
+	}
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {

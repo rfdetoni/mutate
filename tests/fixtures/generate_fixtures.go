@@ -3,8 +3,8 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
-	"encoding/binary"
 	_ "embed"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -136,7 +136,7 @@ func generateSourceTarball(outPath string) error {
 	defer tw.Close()
 
 	files := map[string]string{
-		"sample-src/Makefile": "all:\n\t@echo 'Built'\ninstall:\n\tmkdir -p $(DESTDIR)/usr/bin\n\tcp sample-tool $(DESTDIR)/usr/bin/\n",
+		"sample-src/Makefile":    "all:\n\t@echo 'Built'\ninstall:\n\tmkdir -p $(DESTDIR)/usr/bin\n\tcp sample-tool $(DESTDIR)/usr/bin/\n",
 		"sample-src/sample-tool": "#!/bin/sh\necho 'Source built tool'\n",
 	}
 

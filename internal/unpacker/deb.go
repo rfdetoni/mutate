@@ -89,20 +89,28 @@ func (u *DebUnpacker) parseControlTar(r io.Reader, ir *domain.PackageIR) error {
 			}
 			parseDebControl(content, &ir.Metadata)
 		case "preinst":
-			data,err:=readMetadata(tr)
-			if err!=nil{return fmt.Errorf("read lifecycle metadata: %w",err)}
+			data, err := readMetadata(tr)
+			if err != nil {
+				return fmt.Errorf("read lifecycle metadata: %w", err)
+			}
 			ir.Scripts.PreInstall = string(data)
 		case "postinst":
-			data,err:=readMetadata(tr)
-			if err!=nil{return fmt.Errorf("read lifecycle metadata: %w",err)}
+			data, err := readMetadata(tr)
+			if err != nil {
+				return fmt.Errorf("read lifecycle metadata: %w", err)
+			}
 			ir.Scripts.PostInstall = string(data)
 		case "prerm":
-			data,err:=readMetadata(tr)
-			if err!=nil{return fmt.Errorf("read lifecycle metadata: %w",err)}
+			data, err := readMetadata(tr)
+			if err != nil {
+				return fmt.Errorf("read lifecycle metadata: %w", err)
+			}
 			ir.Scripts.PreRemove = string(data)
 		case "postrm":
-			data,err:=readMetadata(tr)
-			if err!=nil{return fmt.Errorf("read lifecycle metadata: %w",err)}
+			data, err := readMetadata(tr)
+			if err != nil {
+				return fmt.Errorf("read lifecycle metadata: %w", err)
+			}
 			ir.Scripts.PostRemove = string(data)
 		}
 	}

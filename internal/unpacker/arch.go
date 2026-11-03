@@ -42,8 +42,10 @@ func (u *ArchUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Packag
 
 	tr := tar.NewReader(decomp)
 	ir := domain.NewPackageIR(stagingDir, domain.FormatArch)
-	budget,err:=newExtractionBudget()
- if err!=nil{return nil,err}
+	budget, err := newExtractionBudget()
+	if err != nil {
+		return nil, err
+	}
 
 	for {
 		hdr, err := tr.Next()

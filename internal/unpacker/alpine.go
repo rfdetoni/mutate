@@ -30,8 +30,10 @@ func (u *AlpineUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pack
 
 	ir := domain.NewPackageIR(stagingDir, domain.FormatAlpineAPK)
 	br := bufio.NewReader(f)
-	budget,err:=newExtractionBudget()
- if err!=nil{return nil,err}
+	budget, err := newExtractionBudget()
+	if err != nil {
+		return nil, err
+	}
 
 	for {
 		if _, err := br.Peek(1); err != nil {
@@ -71,23 +73,31 @@ func (u *AlpineUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pack
 				parseAlpinePkgInfo(data, &ir.Metadata)
 				continue
 			case ".pre-install":
-				data,err:=readMetadata(tr)
-				if err!=nil{return nil,fmt.Errorf("read Alpine lifecycle metadata: %w",err)}
+				data, err := readMetadata(tr)
+				if err != nil {
+					return nil, fmt.Errorf("read Alpine lifecycle metadata: %w", err)
+				}
 				ir.Scripts.PreInstall = string(data)
 				continue
 			case ".post-install":
-				data,err:=readMetadata(tr)
-				if err!=nil{return nil,fmt.Errorf("read Alpine lifecycle metadata: %w",err)}
+				data, err := readMetadata(tr)
+				if err != nil {
+					return nil, fmt.Errorf("read Alpine lifecycle metadata: %w", err)
+				}
 				ir.Scripts.PostInstall = string(data)
 				continue
 			case ".pre-deinstall":
-				data,err:=readMetadata(tr)
-				if err!=nil{return nil,fmt.Errorf("read Alpine lifecycle metadata: %w",err)}
+				data, err := readMetadata(tr)
+				if err != nil {
+					return nil, fmt.Errorf("read Alpine lifecycle metadata: %w", err)
+				}
 				ir.Scripts.PreRemove = string(data)
 				continue
 			case ".post-deinstall":
-				data,err:=readMetadata(tr)
-				if err!=nil{return nil,fmt.Errorf("read Alpine lifecycle metadata: %w",err)}
+				data, err := readMetadata(tr)
+				if err != nil {
+					return nil, fmt.Errorf("read Alpine lifecycle metadata: %w", err)
+				}
 				ir.Scripts.PostRemove = string(data)
 				continue
 			}
@@ -107,11 +117,13 @@ func (u *AlpineUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pack
 			}
 		}
 
-		if _,err:=io.Copy(io.Discard,gzr);err!=nil{
+		if _, err := io.Copy(io.Discard, gzr); err != nil {
 			_ = gzr.Close()
-			return nil,fmt.Errorf("read Alpine compressed member: %w",err)
+			return nil, fmt.Errorf("read Alpine compressed member: %w", err)
 		}
-		if err:=gzr.Close();err!=nil{return nil,fmt.Errorf("close Alpine compressed member: %w",err)}
+		if err := gzr.Close(); err != nil {
+			return nil, fmt.Errorf("close Alpine compressed member: %w", err)
+		}
 	}
 
 	return ir, nil

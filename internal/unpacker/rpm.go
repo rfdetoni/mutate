@@ -33,8 +33,10 @@ func (u *RpmUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Package
 	}
 
 	ir := domain.NewPackageIR(stagingDir, domain.FormatRPM)
-	budget,err:=newExtractionBudget()
- if err!=nil{return nil,err}
+	budget, err := newExtractionBudget()
+	if err != nil {
+		return nil, err
+	}
 	ir.Metadata = domain.Metadata{
 		Name:         pkg.Name(),
 		Version:      pkg.Version(),
