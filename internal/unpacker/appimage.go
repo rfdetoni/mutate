@@ -2,19 +2,19 @@ package unpacker
 
 import (
 	"bytes"
+	"context"
 	"debug/elf"
- "context"
- "time"
- "github.com/rfdetoni/mutate/internal/detector"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/rfdetoni/mutate/internal/detector"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/rfdetoni/mutate/internal/domain"
 )
@@ -63,51 +63,83 @@ func squashfsOffset(f *os.File) (int64, error) {
 }
 
 func extractAppImageFS(src, fsDir string) error {
- f,err:=os.Open(src)
- if err!=nil{return err}
- st,err:=f.Stat()
- if err!=nil{f.Close();return err}
- format,err:=detector.DetectReader(f,st.Size())
- if err!=nil{f.Close();return fmt.Errorf("detect AppImage: %w",err)}
- if format!=domain.FormatAppImage{f.Close();return fmt.Errorf("not an AppImage")}
- var marker [3]byte
- if _,err:=f.ReadAt(marker[:],8);err!=nil{f.Close();return err}
- isType2:=bytes.Equal(marker[:],[]byte{'A','I',2})
- var exe string
- var args []string
- if isType2 {
-  offset,err:=squashfsOffset(f)
-  if err!=nil{f.Close();return err}
-  exe,err=exec.LookPath("unsquashfs")
-  if err!=nil{f.Close();return fmt.Errorf("AppImage Type 2 requires unsquashfs (squashfs-tools): %w",err)}
-  args=[]string{"-no-progress","-no-xattrs","-offset",fmt.Sprint(offset),"-dest",fsDir,src}
- }else{
-  // Type 1 is ISO9660 from byte zero, not an ISO appended after the ELF.
-  // bsdtar preserves Rock Ridge metadata while rejecting traversal and
-  // symlink-parent escapes by default. Never pass -P/--absolute-paths.
-  exe,err=exec.LookPath("bsdtar")
-  if err!=nil{f.Close();return fmt.Errorf("AppImage Type 1 requires bsdtar (libarchive-tools): %w",err)}
-  absoluteSrc,err:=filepath.Abs(src)
-  if err!=nil{f.Close();return err}
-  args=[]string{"-x","-f",absoluteSrc,"-C",fsDir,"-k","--no-same-owner","--no-same-permissions","--no-xattrs","--no-acls"}
- }
- f.Close()
- ctx,cancel:=context.WithTimeout(context.Background(),10*time.Minute)
- defer cancel()
- // Treat the extractor as external tooling; never run the AppImage itself.
- cmd:=exec.CommandContext(ctx,exe,args...)
- if out,err:=cmd.CombinedOutput();err!=nil{
-  if ctx.Err()!=nil{return fmt.Errorf("AppImage extraction timed out: %w",ctx.Err())}
-  return fmt.Errorf("AppImage extraction failed: %w: %s",err,string(out))
- }
- return nil
+	f, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	st, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return err
+	}
+	format, err := detector.DetectReader(f, st.Size())
+	if err != nil {
+		f.Close()
+		return fmt.Errorf("detect AppImage: %w", err)
+	}
+	if format != domain.FormatAppImage {
+		f.Close()
+		return fmt.Errorf("not an AppImage")
+	}
+	var marker [3]byte
+	if _, err := f.ReadAt(marker[:], 8); err != nil {
+		f.Close()
+		return err
+	}
+	isType2 := bytes.Equal(marker[:], []byte{'A', 'I', 2})
+	var exe string
+	var args []string
+	if isType2 {
+		offset, err := squashfsOffset(f)
+		if err != nil {
+			f.Close()
+			return err
+		}
+		exe, err = exec.LookPath("unsquashfs")
+		if err != nil {
+			f.Close()
+			return fmt.Errorf("AppImage Type 2 requires unsquashfs (squashfs-tools): %w", err)
+		}
+		args = []string{"-no-progress", "-no-xattrs", "-offset", fmt.Sprint(offset), "-dest", fsDir, src}
+	} else {
+		// Type 1 is ISO9660 from byte zero, not an ISO appended after the ELF.
+		// bsdtar preserves Rock Ridge metadata while rejecting traversal and
+		// symlink-parent escapes by default. Never pass -P/--absolute-paths.
+		exe, err = exec.LookPath("bsdtar")
+		if err != nil {
+			f.Close()
+			return fmt.Errorf("AppImage Type 1 requires bsdtar (libarchive-tools): %w", err)
+		}
+		absoluteSrc, err := filepath.Abs(src)
+		if err != nil {
+			f.Close()
+			return err
+		}
+		args = []string{"-x", "-f", absoluteSrc, "-C", fsDir, "-k", "--no-same-owner", "--no-same-permissions", "--no-xattrs", "--no-acls"}
+	}
+	f.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	// Treat the extractor as external tooling; never run the AppImage itself.
+	cmd := exec.CommandContext(ctx, exe, args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("AppImage extraction timed out: %w", ctx.Err())
+		}
+		return fmt.Errorf("AppImage extraction failed: %w: %s", err, string(out))
+	}
+	return nil
 }
 
 func (u *AppImageUnpacker) Unpack(src, stage string) (*domain.PackageIR, error) {
- fsDir:=filepath.Join(stage,"appdir")
- if err:=os.MkdirAll(fsDir,0700);err!=nil{return nil,err}
- if err:=extractAppImageFS(src,fsDir);err!=nil{return nil,err}
- base := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
+	fsDir := filepath.Join(stage, "appdir")
+	if err := os.MkdirAll(fsDir, 0700); err != nil {
+		return nil, err
+	}
+	if err := extractAppImageFS(src, fsDir); err != nil {
+		return nil, err
+	}
+	base := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
 	base = strings.ToLower(regexp.MustCompile(`[^a-zA-Z0-9+.-]`).ReplaceAllString(base, "-"))
 	if base == "" || base == "." || base == ".." {
 		return nil, fmt.Errorf("invalid AppImage name")

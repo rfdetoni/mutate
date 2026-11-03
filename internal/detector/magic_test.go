@@ -156,32 +156,43 @@ func TestDetectAndroidVsGenericZip(t *testing.T) {
 }
 
 func TestDetectType1AppImage(t *testing.T) {
- for _,tc:=range []struct{name string;withMarker bool}{
-  {"marked",true},{"legacy_without_marker",false},
- }{
-  t.Run(tc.name,func(t *testing.T){
-   b:=make([]byte,16*2048+2048)
-   copy(b,[]byte{0x7f,'E','L','F'})
-   if tc.withMarker{copy(b[8:],[]byte{'A','I',1})}
-   b[16*2048]=1
-   copy(b[16*2048+1:],[]byte("CD001"))
-   b[16*2048+6]=1
-   got,err:=DetectReader(bytes.NewReader(b),int64(len(b)))
-   if err!=nil||got!=domain.FormatAppImage{t.Fatalf("got=%s err=%v",got,err)}
-  })
- }
+	for _, tc := range []struct {
+		name       string
+		withMarker bool
+	}{
+		{"marked", true}, {"legacy_without_marker", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := make([]byte, 16*2048+2048)
+			copy(b, []byte{0x7f, 'E', 'L', 'F'})
+			if tc.withMarker {
+				copy(b[8:], []byte{'A', 'I', 1})
+			}
+			b[16*2048] = 1
+			copy(b[16*2048+1:], []byte("CD001"))
+			b[16*2048+6] = 1
+			got, err := DetectReader(bytes.NewReader(b), int64(len(b)))
+			if err != nil || got != domain.FormatAppImage {
+				t.Fatalf("got=%s err=%v", got, err)
+			}
+		})
+	}
 }
 
 func TestRejectMalformedType1ISO(t *testing.T) {
- b:=make([]byte,16*2048+2048)
- copy(b,[]byte{0x7f,'E','L','F'})
- copy(b[8:],[]byte{'A','I',1})
- got,err:=DetectReader(bytes.NewReader(b),int64(len(b)))
- if err==nil || got!=domain.FormatUnknown{t.Fatalf("must reject Type 1 without ISO PVD: %s %v",got,err)}
+	b := make([]byte, 16*2048+2048)
+	copy(b, []byte{0x7f, 'E', 'L', 'F'})
+	copy(b[8:], []byte{'A', 'I', 1})
+	got, err := DetectReader(bytes.NewReader(b), int64(len(b)))
+	if err == nil || got != domain.FormatUnknown {
+		t.Fatalf("must reject Type 1 without ISO PVD: %s %v", got, err)
+	}
 }
 func TestDoNotMisdetectOrdinaryELFAsType1(t *testing.T) {
- b:=make([]byte,16*2048+2048)
- copy(b,[]byte{0x7f,'E','L','F'})
- got,err:=DetectReader(bytes.NewReader(b),int64(len(b)))
- if err!=nil||got!=domain.FormatUnknown{t.Fatalf("plain ELF detected as AppImage: %s %v",got,err)}
+	b := make([]byte, 16*2048+2048)
+	copy(b, []byte{0x7f, 'E', 'L', 'F'})
+	got, err := DetectReader(bytes.NewReader(b), int64(len(b)))
+	if err != nil || got != domain.FormatUnknown {
+		t.Fatalf("plain ELF detected as AppImage: %s %v", got, err)
+	}
 }
