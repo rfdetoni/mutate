@@ -83,18 +83,24 @@ func (u *AndroidUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pac
 		Dependencies: []string{"waydroid"},
 	}
 
- // Preserve the complete APK verbatim. nFPM can read directly from the
- // original source without an unnecessary intermediate filesystem copy.
- st,err:=os.Lstat(srcPath)
- if err!=nil{return nil,fmt.Errorf("stat APK: %w",err)}
- if !st.Mode().IsRegular(){return nil,fmt.Errorf("Android APK must be a regular file")}
- absoluteSrc,err:=filepath.Abs(srcPath)
- if err!=nil{return nil,err}
- apkTargetDest:=fmt.Sprintf("/usr/share/android-apps/%s.apk",appName)
- ir.Files[apkTargetDest]=domain.FileEntry{
-  SourcePath:absoluteSrc,DestinationPath:apkTargetDest,Mode:0644,
-  ModTime:st.ModTime(),
- }
+	// Preserve the complete APK verbatim. nFPM can read directly from the
+	// original source without an unnecessary intermediate filesystem copy.
+	st, err := os.Lstat(srcPath)
+	if err != nil {
+		return nil, fmt.Errorf("stat APK: %w", err)
+	}
+	if !st.Mode().IsRegular() {
+		return nil, fmt.Errorf("Android APK must be a regular file")
+	}
+	absoluteSrc, err := filepath.Abs(srcPath)
+	if err != nil {
+		return nil, err
+	}
+	apkTargetDest := fmt.Sprintf("/usr/share/android-apps/%s.apk", appName)
+	ir.Files[apkTargetDest] = domain.FileEntry{
+		SourcePath: absoluteSrc, DestinationPath: apkTargetDest, Mode: 0644,
+		ModTime: st.ModTime(),
+	}
 
 	// 2. Extract icon if available
 	iconDest := fmt.Sprintf("/usr/share/icons/hicolor/scalable/apps/%s.png", appName)
