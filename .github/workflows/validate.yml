@@ -1,7 +1,7 @@
 name: Mutate validation
 on:
   push:
-    branches: [feat/universal-curl-installer]
+    branches: [fix/performance-functional-audit]
   workflow_dispatch:
 permissions:
   contents: write
@@ -11,8 +11,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: true
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -21,8 +19,17 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq libarchive-tools genisoimage
-      - name: Format Go files
-        run: gofmt -w cmd internal
+      - name: Apply Go formatting
+        run: gofmt -w cmd internal tests/fixtures
+      - name: Commit formatting to feature branch
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add cmd internal tests/fixtures
+            git commit -m "style: gofmt performance and functional fixes"
+            git push
+          fi
       - name: Verify POSIX installer and offline install paths
         run: |
           sh -n install.sh
@@ -32,12 +39,3 @@ jobs:
         run: |
           CGO_ENABLED=0 go build ./...
           go test ./...
-      - name: Commit formatting
-        run: |
-          if ! git diff --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add cmd internal
-            git commit -m "style: apply gofmt"
-            git push
-          fi

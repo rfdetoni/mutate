@@ -68,8 +68,7 @@ REAL_PACKAGES="duf.deb duf.rpm duf.apk sl.deb sl-5.02-26.fc45.x86_64.rpm sl.pkg.
 for pkg in ${REAL_PACKAGES}; do
     pkg_path="${REAL_PACKAGES_DIR}/${pkg}"
     if [ ! -f "${pkg_path}" ]; then
-        warn "Package ${pkg_path} not found, skipping"
-        continue
+        fail "required package ${pkg_path} is missing; run download_real_packages.sh first"
     fi
 
     say "Package: ${pkg}"
@@ -88,19 +87,18 @@ for pkg in ${REAL_PACKAGES}; do
         build_flags="${build_flags} --allow-source-build"
     fi
 
-    if "${MUTATE_BIN}" build "${pkg_path}" ${build_flags} >/dev/null 2>&1; then
+    if "${MUTATE_BIN}" build "${pkg_path}" ${build_flags} >"${TEST_OUT}/build.log" 2>&1; then
         pass "mutate build ${pkg} -> ${NATIVE_FMT}"
     else
-        # Dynamic linking / cross-format dependencies across non-native hosts
-        # may require explicit dependency mapping; warn if not mapped
-        warn "mutate build ${pkg} -> ${NATIVE_FMT} (requires explicit dependency map or native environment)"
+        cat "${TEST_OUT}/build.log" >&2
+        fail "mutate build ${pkg} -> ${NATIVE_FMT} requires a supported native build or an explicit dependency map"
     fi
 
     # 3. mutate install --dry-run
     if "${MUTATE_BIN}" install "${pkg_path}" --dry-run >/dev/null 2>&1; then
         pass "mutate install ${pkg} --dry-run"
     else
-        warn "mutate install ${pkg} --dry-run returned non-zero"
+        fail "mutate install ${pkg} --dry-run returned non-zero"
     fi
 done
 

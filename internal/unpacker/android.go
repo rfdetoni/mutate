@@ -151,9 +151,7 @@ func (u *AndroidUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pac
 }
 
 func sanitizeAppName(pkg string) string {
-	parts := strings.Split(pkg, ".")
-	last := parts[len(parts)-1]
-	return strings.ToLower(strings.ReplaceAll(last, "_", "-"))
+	return strings.ToLower(strings.NewReplacer(".", "-", "_", "-").Replace(pkg))
 }
 
 func extractApkIcon(apkPath, outIconPath string) error {

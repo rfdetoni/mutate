@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -60,97 +61,106 @@ func getUnpackerForFormat(fmtType domain.Format) (unpacker.Unpacker, error) {
 }
 
 func newInspectCmd() *cobra.Command {
-	var extract bool
-	cmd := &cobra.Command{
-		Use:   "inspect <package-file>",
-		Short: "Inspect package metadata, ELF binaries, interpreter and dependencies",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			srcFile := args[0]
-			fmt.Printf("Analyzing %s...\n", srcFile)
+ var extract,fast,jsonOutput bool
+ cmd:=&cobra.Command{
+  Use:"inspect <package-file>",
+  Short:"Inspect package metadata, ELF binaries, interpreter and dependencies",
+  Args:cobra.ExactArgs(1),
+  RunE:func(cmd *cobra.Command,args []string)error{
+   src:=args[0]
+   if fast&&extract{return fmt.Errorf("--fast and --extract cannot be combined")}
+   format,err:=detector.DetectFile(src)
+   if err!=nil{return fmt.Errorf("detect format: %w",err)}
+   if extract&&format!=domain.FormatAppImage{return fmt.Errorf("--extract only applies to AppImage")}
+   if !jsonOutput{fmt.Fprintf(cmd.OutOrStdout(),"Analyzing %s...\nFormat detected: %s\n\n",src,strings.ToUpper(string(format)))}
+   informRuntimePrerequisites(cmd,format,src,extract)
 
-			format, err := detector.DetectFile(srcFile)
-			if err != nil {
-				return fmt.Errorf("detect format: %w", err)
-			}
-			fmt.Printf("Format detected: %s\n\n", strings.ToUpper(string(format)))
-			informRuntimePrerequisites(cmd, format, srcFile, extract)
+   var ir *domain.PackageIR
+   // Native formats provide their package metadata in their headers;
+   // reading and extracting the payload is unnecessary for --fast.
+   if fast&&(format==domain.FormatDEB||format==domain.FormatRPM||
+    format==domain.FormatArch||format==domain.FormatAlpineAPK||format==domain.FormatTarball){
+    metadata,err:=unpacker.InspectMetadata(src,format)
+    if err!=nil{return fmt.Errorf("fast inspect: %w",err)}
+    if jsonOutput{return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{
+     "format":format,"fast":true,"metadata":metadata,
+    })}
+    printInspectMetadata(cmd,metadata,-1)
+    fmt.Fprintln(cmd.OutOrStdout(),"ELF analysis skipped (--fast)")
+    return nil
+   }
+   stage,err:=os.MkdirTemp("","mutate-inspect-*")
+   if err!=nil{return err}
+   defer os.RemoveAll(stage)
+   u,err:=getUnpackerForFormat(format)
+   if err!=nil{return err}
+   if !extract{
+    if preserver,ok:=u.(unpacker.PortablePreserver);ok{
+     ir,err=preserver.Preserve(src,stage)
+    }else{
+     ir,err=u.Unpack(src,stage)
+    }
+   }else{
+    ir,err=u.Unpack(src,stage)
+   }
+   if err!=nil{return fmt.Errorf("inspect package: %w",err)}
+   if fast{
+    if jsonOutput{return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{
+      "format":format,"fast":true,"metadata":ir.Metadata,
+    })}
+    printInspectMetadata(cmd,ir.Metadata,-1)
+    fmt.Fprintln(cmd.OutOrStdout(),"ELF analysis skipped (--fast)")
+    return nil
+   }
+   analysis,err:=elfanalyzer.AnalyzePackage(ir)
+   if err!=nil{return fmt.Errorf("analyze package ELFs: %w",err)}
+   if jsonOutput{
+    return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{
+     "format":format,"fast":false,"metadata":ir.Metadata,
+     "file_count":len(ir.Files),"elf":analysis,
+    })
+   }
+   printInspectMetadata(cmd,ir.Metadata,len(ir.Files))
+   fmt.Fprintln(cmd.OutOrStdout(),"=== ELF Binary Analysis ===")
+   fmt.Fprintf(cmd.OutOrStdout(),"Total ELF Binaries: %d\n",analysis.TotalELFs)
+   fmt.Fprint(cmd.OutOrStdout(),"Target libc:        ")
+   switch{
+   case analysis.HasMusl&&analysis.HasGlibc: fmt.Fprintln(cmd.OutOrStdout(),"Mixed (musl + glibc)")
+   case analysis.HasMusl:fmt.Fprintln(cmd.OutOrStdout(),"musl libc")
+   case analysis.HasGlibc:fmt.Fprintln(cmd.OutOrStdout(),"glibc")
+   default:fmt.Fprintln(cmd.OutOrStdout(),"Pure static / None")
+   }
+   res:=resolver.NewAutoResolver()
+   fmt.Fprintf(cmd.OutOrStdout(),"Host Distribution:  %s\n\n",res.HostDistro())
+   if len(analysis.ExternalLibraries)>0{
+    fmt.Fprintln(cmd.OutOrStdout(),"=== External Shared Libraries (.so) & Host Package Providers ===")
+    for _,lib:=range analysis.ExternalLibraries{
+     provider,err:=res.Resolve(lib)
+     if err!=nil{
+      fmt.Fprintf(cmd.OutOrStdout(),"  • %-25s -> [NOT FOUND on host; explicit mapping or --library-dir required]\n",lib)
+     }else{
+      fmt.Fprintf(cmd.OutOrStdout(),"  • %-25s -> %s\n",lib,provider)
+     }
+    }
+   }
+   return nil
+  },
+ }
+ cmd.Flags().BoolVar(&extract,"extract",false,"Extract AppImage filesystem for deep inspection")
+ cmd.Flags().BoolVar(&fast,"fast",false,"Read package metadata without extracting its payload or analyzing ELF files")
+ cmd.Flags().BoolVar(&jsonOutput,"json",false,"Output machine-readable JSON (runtime notices go to stderr)")
+ return cmd
+}
 
-			stagingDir, err := os.MkdirTemp("", "mutate-inspect-*")
-			if err != nil {
-				return err
-			}
-			defer os.RemoveAll(stagingDir)
-
-			u, err := getUnpackerForFormat(format)
-			if err != nil {
-				return err
-			}
-
-			if extract && format != domain.FormatAppImage {
-				return fmt.Errorf("--extract only applies to AppImage")
-			}
-			var ir *domain.PackageIR
-			if !extract {
-				if preserver, ok := u.(unpacker.PortablePreserver); ok {
-					ir, err = preserver.Preserve(srcFile, stagingDir)
-				} else {
-					ir, err = u.Unpack(srcFile, stagingDir)
-				}
-			} else {
-				ir, err = u.Unpack(srcFile, stagingDir)
-			}
-			if err != nil {
-				return fmt.Errorf("inspect package: %w", err)
-			}
-
-			// Package Metadata
-			fmt.Println("=== Package Metadata ===")
-			fmt.Printf("Name:         %s\n", ir.Metadata.Name)
-			fmt.Printf("Version:      %s-%s\n", ir.Metadata.Version, ir.Metadata.Release)
-			fmt.Printf("Architecture: %s\n", ir.Metadata.Architecture)
-			fmt.Printf("Description:  %s\n", strings.TrimSpace(ir.Metadata.Description))
-			fmt.Printf("Total Files:  %d\n\n", len(ir.Files))
-
-			// ELF Analysis
-			analysis, err := elfanalyzer.AnalyzePackage(ir)
-			if err != nil {
-				return fmt.Errorf("analyze package ELFs: %w", err)
-			}
-
-			fmt.Println("=== ELF Binary Analysis ===")
-			fmt.Printf("Total ELF Binaries: %d\n", analysis.TotalELFs)
-			fmt.Printf("Target libc:        ")
-			if analysis.HasMusl && analysis.HasGlibc {
-				fmt.Println("Mixed (musl + glibc)")
-			} else if analysis.HasMusl {
-				fmt.Println("musl libc")
-			} else if analysis.HasGlibc {
-				fmt.Println("glibc")
-			} else {
-				fmt.Println("Pure static / None")
-			}
-
-			res := resolver.NewAutoResolver()
-			fmt.Printf("Host Distribution:  %s\n\n", res.HostDistro())
-
-			if len(analysis.ExternalLibraries) > 0 {
-				fmt.Println("=== External Shared Libraries (.so) & Host Package Providers ===")
-				for _, lib := range analysis.ExternalLibraries {
-					provider, err := res.Resolve(lib)
-					if err != nil {
-						fmt.Printf("  • %-25s -> [NOT FOUND on host; explicit mapping or --library-dir required]\n", lib)
-					} else {
-						fmt.Printf("  • %-25s -> %s\n", lib, provider)
-					}
-				}
-			}
-
-			return nil
-		},
-	}
-	cmd.Flags().BoolVar(&extract, "extract", false, "Extract AppImage filesystem for deep inspection (default: preserve)")
-	return cmd
+func printInspectMetadata(cmd *cobra.Command,meta domain.Metadata,totalFiles int){
+ out:=cmd.OutOrStdout()
+ fmt.Fprintln(out,"=== Package Metadata ===")
+ fmt.Fprintf(out,"Name:         %s\n",meta.Name)
+ fmt.Fprintf(out,"Version:      %s-%s\n",meta.Version,meta.Release)
+ fmt.Fprintf(out,"Architecture: %s\n",meta.Architecture)
+ fmt.Fprintf(out,"Description:  %s\n",strings.TrimSpace(meta.Description))
+ if totalFiles>=0{fmt.Fprintf(out,"Total Files:  %d\n",totalFiles)}
+ fmt.Fprintln(out)
 }
 
 func newBuildCmd() *cobra.Command {
@@ -159,6 +169,7 @@ func newBuildCmd() *cobra.Command {
 	var libraryDir string
 	var dependencyMapPath string
 	var extract bool
+ var packageName,packageVersion string
 	cmd := &cobra.Command{
 		Use:   "build <package-file> --to <deb|rpm|arch|apk> [-o output]",
 		Short: "Convert a package to a native Linux package",
@@ -169,7 +180,7 @@ func newBuildCmd() *cobra.Command {
 				return err
 			}
 			informRuntimePrerequisites(cmd, format, args[0], extract)
-			ir, cleanup, err := prepareConversionWithOptions(args[0], targetFormat, allowSourceBuild, conversionOptions{LibraryDir: libraryDir, DependencyMapPath: dependencyMapPath, Extract: extract})
+			ir, cleanup, err := prepareConversionWithOptions(args[0], targetFormat, allowSourceBuild, conversionOptions{LibraryDir: libraryDir, DependencyMapPath: dependencyMapPath, Extract: extract, PackageName:packageName, PackageVersion:packageVersion})
 			if err != nil {
 				return err
 			}
@@ -195,6 +206,8 @@ func newBuildCmd() *cobra.Command {
 	cmd.Flags().StringVar(&libraryDir, "library-dir", "", "Directory of explicitly supplied ELF libraries to isolate")
 	cmd.Flags().StringVar(&dependencyMapPath, "dependency-map", "", "JSON map of source dependencies / so:library names to target packages")
 	cmd.Flags().BoolVar(&extract, "extract", false, "Extract AppImage files instead of packaging the original artifact")
+ cmd.Flags().StringVar(&packageName,"package-name","","Override AppImage package name")
+ cmd.Flags().StringVar(&packageVersion,"package-version","","Override AppImage package version")
 	_ = cmd.MarkFlagRequired("to")
 	return cmd
 }
@@ -204,6 +217,7 @@ func newInstallCmd() *cobra.Command {
 	var libraryDir string
 	var dependencyMapPath string
 	var extract bool
+ var packageName,packageVersion string
 	cmd := &cobra.Command{
 		Use:   "install <package-file> [--dry-run]",
 		Short: "Convert to host format and install with native package manager",
@@ -233,7 +247,7 @@ func newInstallCmd() *cobra.Command {
 				fmt.Printf("[dry-run] Would convert %s (%s) to %s and request installation; no source build, packaging, or installation executed\n", src, sourceFmt, target)
 				return nil
 			}
-			ir, cleanup, err := prepareConversionWithOptions(src, target, allowSourceBuild, conversionOptions{LibraryDir: libraryDir, DependencyMapPath: dependencyMapPath, Extract: extract})
+			ir, cleanup, err := prepareConversionWithOptions(src, target, allowSourceBuild, conversionOptions{LibraryDir: libraryDir, DependencyMapPath: dependencyMapPath, Extract: extract, PackageName:packageName, PackageVersion:packageVersion})
 			if err != nil {
 				return err
 			}
@@ -251,6 +265,8 @@ func newInstallCmd() *cobra.Command {
 	cmd.Flags().StringVar(&libraryDir, "library-dir", "", "Directory of explicitly supplied ELF libraries to isolate")
 	cmd.Flags().StringVar(&dependencyMapPath, "dependency-map", "", "JSON map of source dependencies / so:library names to target packages")
 	cmd.Flags().BoolVar(&extract, "extract", false, "Extract AppImage files instead of packaging the original artifact")
+ cmd.Flags().StringVar(&packageName,"package-name","","Override AppImage package name")
+ cmd.Flags().StringVar(&packageVersion,"package-version","","Override AppImage package version")
 	return cmd
 }
 

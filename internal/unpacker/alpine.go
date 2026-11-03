@@ -30,6 +30,8 @@ func (u *AlpineUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pack
 
 	ir := domain.NewPackageIR(stagingDir, domain.FormatAlpineAPK)
 	br := bufio.NewReader(f)
+	budget,err:=newExtractionBudget()
+ if err!=nil{return nil,err}
 
 	for {
 		if _, err := br.Peek(1); err != nil {
@@ -62,26 +64,30 @@ func (u *AlpineUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pack
 			// Handle Alpine control entries
 			switch cleanName {
 			case ".PKGINFO":
-				data, err := io.ReadAll(tr)
+				data, err := readMetadata(tr)
 				if err != nil {
 					return nil, fmt.Errorf("read .PKGINFO: %w", err)
 				}
 				parseAlpinePkgInfo(data, &ir.Metadata)
 				continue
 			case ".pre-install":
-				data, _ := io.ReadAll(tr)
+				data,err:=readMetadata(tr)
+				if err!=nil{return nil,fmt.Errorf("read Alpine lifecycle metadata: %w",err)}
 				ir.Scripts.PreInstall = string(data)
 				continue
 			case ".post-install":
-				data, _ := io.ReadAll(tr)
+				data,err:=readMetadata(tr)
+				if err!=nil{return nil,fmt.Errorf("read Alpine lifecycle metadata: %w",err)}
 				ir.Scripts.PostInstall = string(data)
 				continue
 			case ".pre-deinstall":
-				data, _ := io.ReadAll(tr)
+				data,err:=readMetadata(tr)
+				if err!=nil{return nil,fmt.Errorf("read Alpine lifecycle metadata: %w",err)}
 				ir.Scripts.PreRemove = string(data)
 				continue
 			case ".post-deinstall":
-				data, _ := io.ReadAll(tr)
+				data,err:=readMetadata(tr)
+				if err!=nil{return nil,fmt.Errorf("read Alpine lifecycle metadata: %w",err)}
 				ir.Scripts.PostRemove = string(data)
 				continue
 			}
@@ -96,13 +102,16 @@ func (u *AlpineUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pack
 			if hdr.Size > maxEntryBytes {
 				return nil, fmt.Errorf("archive entry too large: %q", hdr.Name)
 			}
-			if err := extractArchiveEntry(stagingDir, ir, hdr.Name, hdr.Typeflag, hdr.Linkname, hdr.FileInfo().Mode(), hdr.ModTime, hdr.Uname, hdr.Gname, tr); err != nil {
+			if err := extractArchiveEntry(stagingDir, ir, hdr.Name, hdr.Typeflag, hdr.Linkname, hdr.FileInfo().Mode(), hdr.ModTime, hdr.Uname, hdr.Gname, tr, budget); err != nil {
 				return nil, fmt.Errorf("extract %q: %w", hdr.Name, err)
 			}
 		}
 
-		io.Copy(io.Discard, gzr)
-		gzr.Close()
+		if _,err:=io.Copy(io.Discard,gzr);err!=nil{
+			_ = gzr.Close()
+			return nil,fmt.Errorf("read Alpine compressed member: %w",err)
+		}
+		if err:=gzr.Close();err!=nil{return nil,fmt.Errorf("close Alpine compressed member: %w",err)}
 	}
 
 	return ir, nil

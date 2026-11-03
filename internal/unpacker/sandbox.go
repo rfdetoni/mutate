@@ -2,6 +2,7 @@ package unpacker
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -58,9 +59,23 @@ func runIsolatedBuild(workDir, stage string, argv ...string) error {
 		"--setenv", "GOTOOLCHAIN", "local",
 		"--setenv", "CARGO_NET_OFFLINE", "true",
 		"--setenv", "DESTDIR", absStage,
-		"--", command,
 	}
-	args = append(args, argv[1:]...)
+ // Optional explicit read-only cache, never the caller's home by default.
+ // Cache layout: <dir>/go-mod and <dir>/cargo.
+ if raw:=os.Getenv("MUTATE_BUILD_CACHE_DIR");raw!=""{
+  cache,err:=filepath.EvalSymlinks(raw)
+  if err!=nil{return fmt.Errorf("resolve build cache: %w",err)}
+  cache,err=filepath.Abs(cache)
+  if err!=nil{return err}
+  st,err:=os.Stat(cache)
+  if err!=nil{return err}
+  if !st.IsDir(){return fmt.Errorf("build cache must be a directory")}
+  args=append(args,"--ro-bind",cache,"/mutate-cache",
+   "--setenv","GOMODCACHE","/mutate-cache/go-mod",
+   "--setenv","CARGO_HOME","/mutate-cache/cargo")
+ }
+ args=append(args,"--",command)
+ args = append(args, argv[1:]...)
 	cmd := exec.Command(exe, args...)
 	cmd.Dir = absWork
 	// Avoid inheriting secrets through the environment.

@@ -87,7 +87,7 @@ if [ "$MODE" = "local" ]; then
     (cd "${ROOT_DIR}" && CGO_ENABLED=0 go build -ldflags="-s -w" -o "${LOCAL_TMP}/mutate" ./cmd/mutate)
     tar -czf "${REL_DIR}/mutate_linux_amd64.tar.gz" -C "${LOCAL_TMP}" mutate
     (cd "${REL_DIR}" && sha256sum mutate_linux_amd64.tar.gz > SHA256SUMS)
-    INSTALL_CMD="MUTATE_RELEASE_BASE_URL=file:///local_release /workspace/install.sh --system"
+    INSTALL_CMD="MUTATE_RELEASE_BASE_URL=file:///local_release sh /workspace/install.sh --system"
 fi
 
 # Step 3: Define OS Matrix

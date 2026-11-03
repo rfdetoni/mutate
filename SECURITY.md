@@ -40,3 +40,10 @@ The runtime preflight reports whether Waydroid is available on PATH or whether c
 - Official GitHub release archive downloads require a matching SHA-256 manifest; mismatches stop the installation. Without a release, the installer downloads source from the official repository and compiles. The upstream source ref defaults to the mutable `main` branch; use an audited checkout/ref when pinning is required.
 - If a compatible Go toolchain is absent, the installer downloads a toolchain for supported Linux architectures from `go.dev`, then checks its SHA-256 against the official `go.dev/dl/?mode=json&include=all` metadata before unpacking. This is a temporary installation under a private directory, not a system-level Go install.
 - A fetched source build downloads Go modules using the standard Go module checksum mechanisms. Review remote shell scripts and upstream sources before execution. The installer never automatically installs packages through a distro's package manager.
+
+## Extraction limits and offline build cache
+
+- Native archive extraction has per-archive defaults of 250,000 entries and 16 GiB expanded data, with 8 GiB per entry and 4 MiB metadata caps. Set `MUTATE_MAX_EXTRACT_BYTES` or `MUTATE_MAX_EXTRACT_ENTRIES` to reduce or raise the global budgets.
+- External AppImage extraction by `bsdtar`/`unsquashfs` is not completely constrained by the internal Go budget; use low-privilege accounts and filesystem quotas.
+- `MUTATE_BUILD_CACHE_DIR` is opt-in and read-only inside Bubblewrap; only designate caches with nonsensitive, prevalidated content.
+- Android package identities now use the full package name to prevent collisions.
