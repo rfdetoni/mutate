@@ -19,39 +19,17 @@ type PortablePreserver interface {
 }
 
 var portableNameChars = regexp.MustCompile(`[^a-zA-Z0-9+.-]`)
-var appImageVersionSuffix = regexp.MustCompile(`(?i)^(.+?)[-_]v?([0-9]+\.[0-9]+(?:\.[0-9]+)?)(?:[-_](?:x86_64|amd64|aarch64|arm64))?package unpacker
-
-import (
-	"debug/elf"
-	"fmt"
-	"os"
-	"path/filepath"
-	"regexp"
-	"strings"
-
-	"github.com/rfdetoni/mutate/internal/detector"
-	"github.com/rfdetoni/mutate/internal/domain"
-)
-
-// PortablePreserver keeps a self-contained artifact intact in the native
-// package rather than unpacking and reconstructing its internal files.
-type PortablePreserver interface {
-	Preserve(srcPath, stagingDir string) (*domain.PackageIR, error)
-}
-
-)
+var appImageVersionSuffix = regexp.MustCompile(`(?i)^(.+?)[-_]v?([0-9]+\.[0-9]+(?:\.[0-9]+)?)(?:[-_](?:x86_64|amd64|aarch64|arm64))?$`)
 
 func appImageName(src string) (string, error) {
  name,_,err:=appImageIdentity(src)
  return name,err
 }
 
-func appImageIdentity(src string)(string,string,error){
+func appImageIdentity(src string)(string,string,error) {
  filename:=filepath.Base(src)
  base:=filename
- if strings.EqualFold(filepath.Ext(filename),".AppImage"){
-  base=strings.TrimSuffix(filename,filepath.Ext(filename))
- }
+ if strings.EqualFold(filepath.Ext(filename),".AppImage"){base=strings.TrimSuffix(filename,filepath.Ext(filename))}
  version:="1.0.0"
  if match:=appImageVersionSuffix.FindStringSubmatch(base);len(match)==3{
   base=match[1]
@@ -63,20 +41,20 @@ func appImageIdentity(src string)(string,string,error){
 		base = strings.TrimRight(base[:64], "-.")
 	}
 	if base == "" || base == "." || base == ".." {
-		return "", "",fmt.Errorf("invalid AppImage filename %q", filename)
-	}
-	return base, version,nil
+        return "", "",fmt.Errorf("invalid AppImage filename %q",filename)
+    }
+    return base,version,nil
 }
 
 // Preserve stores only the original AppImage and a freedesktop launcher.
 // nFPM reads SourcePath directly: no redundant multi-gigabyte staging copy,
 // ISO/SquashFS extraction, executable inspection or host execution occurs.
-func (u *AppImageUnpacker) Preserve(srcPath, stagingDir string) (*domain.PackageIR, error) {
+func (u *AppImageUnpacker) Preserve(srcPath, stagingDir string) (*domain.PackageIR,error) {
  return u.PreserveWithMetadata(srcPath,stagingDir,"","")
 }
 
 func (u *AppImageUnpacker) PreserveWithMetadata(srcPath, stagingDir, customName, customVersion string) (*domain.PackageIR,error) {
- st, err := os.Lstat(srcPath)
+ st,err:=os.Lstat(srcPath)
 	if err != nil {
 		return nil, fmt.Errorf("stat AppImage: %w", err)
 	}
@@ -90,198 +68,18 @@ func (u *AppImageUnpacker) PreserveWithMetadata(srcPath, stagingDir, customName,
 	if format != domain.FormatAppImage {
 		return nil, fmt.Errorf("file is not an AppImage")
 	}
-	name,version,err:=appImageIdentity(srcPath)
+ name,version,err:=appImageIdentity(srcPath)
  if err!=nil{return nil,err}
  if customName!=""{
-  if strings.ContainsAny(customName,"/\\\x00\n\r\t\"' ;package unpacker
-
-import (
-	"debug/elf"
-	"fmt"
-	"os"
-	"path/filepath"
-	"regexp"
-	"strings"
-
-	"github.com/rfdetoni/mutate/internal/detector"
-	"github.com/rfdetoni/mutate/internal/domain"
-)
-
-// PortablePreserver keeps a self-contained artifact intact in the native
-// package rather than unpacking and reconstructing its internal files.
-type PortablePreserver interface {
-	Preserve(srcPath, stagingDir string) (*domain.PackageIR, error)
-}
-
-var portableNameChars = regexp.MustCompile(`[^a-zA-Z0-9+.-]`)
-var appImageVersionSuffix = regexp.MustCompile(`(?i)^(.+?)[-_]v?([0-9]+\.[0-9]+(?:\.[0-9]+)?)(?:[-_](?:x86_64|amd64|aarch64|arm64))?package unpacker
-
-import (
-	"debug/elf"
-	"fmt"
-	"os"
-	"path/filepath"
-	"regexp"
-	"strings"
-
-	"github.com/rfdetoni/mutate/internal/detector"
-	"github.com/rfdetoni/mutate/internal/domain"
-)
-
-// PortablePreserver keeps a self-contained artifact intact in the native
-// package rather than unpacking and reconstructing its internal files.
-type PortablePreserver interface {
-	Preserve(srcPath, stagingDir string) (*domain.PackageIR, error)
-}
-
-)
-
-func appImageName(src string) (string, error) {
- name,_,err:=appImageIdentity(src)
- return name,err
-}
-
-func appImageIdentity(src string)(string,string,error){
- filename:=filepath.Base(src)
- base:=filename
- if strings.EqualFold(filepath.Ext(filename),".AppImage"){
-  base=strings.TrimSuffix(filename,filepath.Ext(filename))
- }
- version:="1.0.0"
- if match:=appImageVersionSuffix.FindStringSubmatch(base);len(match)==3{
-  base=match[1]
-  version=match[2]
- }
- base=strings.ToLower(portableNameChars.ReplaceAllString(base,"-"))
-	base = strings.Trim(base, "-.")
-	if len(base) > 64 {
-		base = strings.TrimRight(base[:64], "-.")
-	}
-	if base == "" || base == "." || base == ".." {
-		return "", "",fmt.Errorf("invalid AppImage filename %q", filename)
-	}
-	return base, version,nil
-}
-
-// Preserve stores only the original AppImage and a freedesktop launcher.
-// nFPM reads SourcePath directly: no redundant multi-gigabyte staging copy,
-// ISO/SquashFS extraction, executable inspection or host execution occurs.
-func (u *AppImageUnpacker) Preserve(srcPath, stagingDir string) (*domain.PackageIR, error) {
- return u.PreserveWithMetadata(srcPath,stagingDir,"","")
-}
-
-func (u *AppImageUnpacker) PreserveWithMetadata(srcPath, stagingDir, customName, customVersion string) (*domain.PackageIR,error) {
- st, err := os.Lstat(srcPath)
-	if err != nil {
-		return nil, fmt.Errorf("stat AppImage: %w", err)
-	}
-	if !st.Mode().IsRegular() {
-		return nil, fmt.Errorf("AppImage must be a regular file, not a symlink or special file")
-	}
-	format, err := detector.DetectFile(srcPath)
-	if err != nil {
-		return nil, err
-	}
-	if format != domain.FormatAppImage {
-		return nil, fmt.Errorf("file is not an AppImage")
-	}
-")||customName=="."||customName==".."{return nil,fmt.Errorf("invalid package name %q",customName)}
-  name=strings.ToLower(portableNameChars.ReplaceAllString(customName,"-"))
+  if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9+.-]{0,63}$`).MatchString(customName){
+   return nil,fmt.Errorf("invalid package name %q",customName)
+  }
+  name=strings.ToLower(customName)
  }
  if customVersion!=""{
-  if !regexp.MustCompile(`^[0-9][0-9A-Za-z.+~:-]*package unpacker
-
-import (
-	"debug/elf"
-	"fmt"
-	"os"
-	"path/filepath"
-	"regexp"
-	"strings"
-
-	"github.com/rfdetoni/mutate/internal/detector"
-	"github.com/rfdetoni/mutate/internal/domain"
-)
-
-// PortablePreserver keeps a self-contained artifact intact in the native
-// package rather than unpacking and reconstructing its internal files.
-type PortablePreserver interface {
-	Preserve(srcPath, stagingDir string) (*domain.PackageIR, error)
-}
-
-var portableNameChars = regexp.MustCompile(`[^a-zA-Z0-9+.-]`)
-var appImageVersionSuffix = regexp.MustCompile(`(?i)^(.+?)[-_]v?([0-9]+\.[0-9]+(?:\.[0-9]+)?)(?:[-_](?:x86_64|amd64|aarch64|arm64))?package unpacker
-
-import (
-	"debug/elf"
-	"fmt"
-	"os"
-	"path/filepath"
-	"regexp"
-	"strings"
-
-	"github.com/rfdetoni/mutate/internal/detector"
-	"github.com/rfdetoni/mutate/internal/domain"
-)
-
-// PortablePreserver keeps a self-contained artifact intact in the native
-// package rather than unpacking and reconstructing its internal files.
-type PortablePreserver interface {
-	Preserve(srcPath, stagingDir string) (*domain.PackageIR, error)
-}
-
-)
-
-func appImageName(src string) (string, error) {
- name,_,err:=appImageIdentity(src)
- return name,err
-}
-
-func appImageIdentity(src string)(string,string,error){
- filename:=filepath.Base(src)
- base:=filename
- if strings.EqualFold(filepath.Ext(filename),".AppImage"){
-  base=strings.TrimSuffix(filename,filepath.Ext(filename))
- }
- version:="1.0.0"
- if match:=appImageVersionSuffix.FindStringSubmatch(base);len(match)==3{
-  base=match[1]
-  version=match[2]
- }
- base=strings.ToLower(portableNameChars.ReplaceAllString(base,"-"))
-	base = strings.Trim(base, "-.")
-	if len(base) > 64 {
-		base = strings.TrimRight(base[:64], "-.")
-	}
-	if base == "" || base == "." || base == ".." {
-		return "", "",fmt.Errorf("invalid AppImage filename %q", filename)
-	}
-	return base, version,nil
-}
-
-// Preserve stores only the original AppImage and a freedesktop launcher.
-// nFPM reads SourcePath directly: no redundant multi-gigabyte staging copy,
-// ISO/SquashFS extraction, executable inspection or host execution occurs.
-func (u *AppImageUnpacker) Preserve(srcPath, stagingDir string) (*domain.PackageIR, error) {
- return u.PreserveWithMetadata(srcPath,stagingDir,"","")
-}
-
-func (u *AppImageUnpacker) PreserveWithMetadata(srcPath, stagingDir, customName, customVersion string) (*domain.PackageIR,error) {
- st, err := os.Lstat(srcPath)
-	if err != nil {
-		return nil, fmt.Errorf("stat AppImage: %w", err)
-	}
-	if !st.Mode().IsRegular() {
-		return nil, fmt.Errorf("AppImage must be a regular file, not a symlink or special file")
-	}
-	format, err := detector.DetectFile(srcPath)
-	if err != nil {
-		return nil, err
-	}
-	if format != domain.FormatAppImage {
-		return nil, fmt.Errorf("file is not an AppImage")
-	}
-).MatchString(customVersion){return nil,fmt.Errorf("invalid package version %q",customVersion)}
+  if !regexp.MustCompile(`^[0-9][0-9A-Za-z.+~:-]*$`).MatchString(customVersion){
+   return nil,fmt.Errorf("invalid package version %q",customVersion)
+  }
   version=customVersion
  }
 	f, err := elf.Open(srcPath)
