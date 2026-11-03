@@ -232,4 +232,15 @@ To opt into the real-package integration suite, download the upstream samples fi
 
 `inspect`, `build` and `install` share a single format-handler factory and `unpacker.Prepare` policy: preserve recognized portable artifacts by default, extract AppImages only with `--extract`, and validate their metadata overrides **before** constructing destination paths and launchers. This keeps preserved and extracted AppImage identities consistent.
 
-The intermediate representation separates **source location** from **package destination**. `SourcePath` may refer to an original AppImage/APK or supplied library outside staging, and must be treated as read-only. FHS relocation uses copy-on-write for external inputs; only temporary files within the package staging directory may be moved or rewritten. Package assembly validates destination paths and IR entry consistency at a single boundary, independently of the source format.
+The intermediate representation separates **source location** from **package destination**. `SourcePath` may refer to an original AppImage/APK or supplied library outside staging, and must be treated as read-only. FHS library relocation changes only the package destination metadata and keeps payload files in place, even for external input libraries. Only configuration files whose content actually needs rewriting are copied to private staging (copy-on-write). Package assembly validates destination paths and IR entry consistency at a single boundary, independently of the source format.
+
+### Profiling and performance comparison
+
+Set `MUTATE_TIMINGS=1` to emit per-stage timings to stderr without changing normal CLI or JSON output:
+
+```sh
+MUTATE_TIMINGS=1 mutate build package.rpm --to deb --dependency-map mappings.json
+MUTATE_TIMINGS=1 mutate inspect package.deb
+```
+
+No timing probes are enabled by default. Compare p50/p95 between two builds with the optional, standard-library-only `benchmarks/compare.py` tool (see `benchmarks/README.md`). Measurements depend on package format, compression, filesystem and library discovery; this optimization avoids unnecessary relocation I/O, **not** output compression. Runtime prerequisite checks now run only for Android APK and AppImage, and Android APKs preserved for Waydroid skip Linux ELF analysis.

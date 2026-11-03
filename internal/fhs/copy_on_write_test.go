@@ -41,12 +41,11 @@ func TestNormalizeNeverChangesExternalInputs(t *testing.T) {
 		t.Fatalf("external desktop modified: %v %q", err, desktopBytes)
 	}
 	libEntry, ok := ir.Files["/usr/lib/x86_64-linux-gnu/libexternal.so.1"]
-	if !ok || !insideStaging(stage, libEntry.SourcePath) {
-		t.Fatalf("library not relocated into private staging: %+v", libEntry)
+	if !ok || libEntry.SourcePath != lib {
+		t.Fatalf("library destination must relocate without copying its source: %+v", libEntry)
 	}
-	copyBytes, err := os.ReadFile(libEntry.SourcePath)
-	if err != nil || string(copyBytes) != "unchanged library" {
-		t.Fatalf("relocated content: %v %q", err, copyBytes)
+	if _, err := os.Stat(filepath.Join(stage, "usr/lib/x86_64-linux-gnu/libexternal.so.1")); !os.IsNotExist(err) {
+		t.Fatalf("unnecessary library copy into staging: %v", err)
 	}
 	deskEntry := ir.Files["/usr/share/applications/original.desktop"]
 	if !insideStaging(stage, deskEntry.SourcePath) {
@@ -80,5 +79,90 @@ func TestNormalizeCollisionFailsWithoutEditingFiles(t *testing.T) {
 	}
 	if len(ir.Files) != 2 {
 		t.Fatal("package representation mutated on collision")
+	}
+}
+
+func TestNormalizeNoOpDoesNotRewriteStaging(t *testing.T) {
+	stage := t.TempDir()
+	source := filepath.Join(stage, "usr/bin/hello")
+	if err := os.MkdirAll(filepath.Dir(source), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("original"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	ir := domain.NewPackageIR(stage, domain.FormatDEB)
+	ir.Metadata.Architecture = "amd64"
+	ir.Files["/usr/bin/hello"] = domain.FileEntry{
+		SourcePath: source, DestinationPath: "/usr/bin/hello", Mode: 0755,
+	}
+	before, err := os.Stat(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := NormalizePackage(ir, resolver.DistroDebian); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(source)
+	if err != nil || !os.SameFile(before, after) {
+		t.Fatalf("no-op normalization touched payload: %v", err)
+	}
+	if got := ir.Files["/usr/bin/hello"].SourcePath; got != source {
+		t.Fatalf("source path changed on no-op: %s", got)
+	}
+}
+
+func TestNormalizeRelocationWithImplicitSource(t *testing.T) {
+	stage := t.TempDir()
+	source := filepath.Join(stage, "usr/lib64/libtest.so")
+	if err := os.MkdirAll(filepath.Dir(source), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("library payload"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	ir := domain.NewPackageIR(stage, domain.FormatRPM)
+	ir.Metadata.Architecture = "amd64"
+	ir.Files["/usr/lib64/libtest.so"] = domain.FileEntry{
+		DestinationPath: "/usr/lib64/libtest.so", Mode: 0644,
+	}
+	if err := NormalizePackage(ir, resolver.DistroDebian); err != nil {
+		t.Fatal(err)
+	}
+	dest := "/usr/lib/x86_64-linux-gnu/libtest.so"
+	entry, ok := ir.Files[dest]
+	if !ok || entry.SourcePath != source || entry.DestinationPath != dest {
+		t.Fatalf("relocation lost implicit source: %+v", entry)
+	}
+	b, err := os.ReadFile(source)
+	if err != nil || string(b) != "library payload" {
+		t.Fatalf("original staged source missing: %v %q", err, b)
+	}
+	if _, err := os.Stat(filepath.Join(stage, "usr/lib/x86_64-linux-gnu/libtest.so")); !os.IsNotExist(err) {
+		t.Fatalf("unnecessary payload move: %v", err)
+	}
+}
+
+func TestNormalizeRelocationRejectsSymlinkSource(t *testing.T) {
+	stage := t.TempDir()
+	external := filepath.Join(t.TempDir(), "source")
+	if err := os.WriteFile(external, []byte("original"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sym := filepath.Join(stage, "lib.so")
+	if err := os.Symlink(external, sym); err != nil {
+		t.Fatal(err)
+	}
+	ir := domain.NewPackageIR(stage, domain.FormatRPM)
+	ir.Metadata.Architecture = "amd64"
+	ir.Files["/usr/lib64/lib.so"] = domain.FileEntry{
+		SourcePath: sym, DestinationPath: "/usr/lib64/lib.so", Mode: 0644,
+	}
+	if err := NormalizePackage(ir, resolver.DistroDebian); err == nil {
+		t.Fatal("relocation accepted symlink source")
+	}
+	b, err := os.ReadFile(external)
+	if err != nil || string(b) != "original" {
+		t.Fatalf("original input modified: %v", err)
 	}
 }

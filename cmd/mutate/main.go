@@ -46,6 +46,7 @@ func newInspectCmd() *cobra.Command {
 		Short: "Inspect package metadata, ELF binaries, interpreter and dependencies",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			timer := startPhaseTimer("inspect")
 			src := args[0]
 			if fast && extract {
 				return fmt.Errorf("--fast and --extract cannot be combined")
@@ -57,6 +58,7 @@ func newInspectCmd() *cobra.Command {
 			if extract && format != domain.FormatAppImage {
 				return fmt.Errorf("--extract only applies to AppImage")
 			}
+			timer.mark("detect")
 			if !jsonOutput {
 				fmt.Fprintf(cmd.OutOrStdout(), "Analyzing %s...\nFormat detected: %s\n\n", src, strings.ToUpper(string(format)))
 			}
@@ -71,6 +73,7 @@ func newInspectCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("fast inspect: %w", err)
 				}
+				timer.mark("metadata")
 				if jsonOutput {
 					return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{
 						"format": format, "fast": true, "metadata": metadata,
@@ -89,6 +92,7 @@ func newInspectCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("inspect package: %w", err)
 			}
+			timer.mark("unpack")
 			if fast {
 				if jsonOutput {
 					return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{
@@ -103,6 +107,7 @@ func newInspectCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("analyze package ELFs: %w", err)
 			}
+			timer.mark("elf")
 			if jsonOutput {
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{
 					"format": format, "fast": false, "metadata": ir.Metadata,
@@ -136,6 +141,7 @@ func newInspectCmd() *cobra.Command {
 					}
 				}
 			}
+			timer.mark("resolve")
 			return nil
 		},
 	}
@@ -170,6 +176,7 @@ func newBuildCmd() *cobra.Command {
 		Short: "Convert a package to a native Linux package",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			timer := startPhaseTimer("build")
 			format, err := detector.DetectFile(args[0])
 			if err != nil {
 				return err
@@ -180,6 +187,7 @@ func newBuildCmd() *cobra.Command {
 				return err
 			}
 			defer cleanup()
+			timer.mark("prepare")
 			out := outputPath
 			if out == "" {
 				ext := targetFormat
@@ -191,6 +199,7 @@ func newBuildCmd() *cobra.Command {
 			if err := packager.BuildPackageToFile(ir, targetFormat, out); err != nil {
 				return err
 			}
+			timer.mark("package")
 			fmt.Printf("Package created: %s\n", out)
 			return nil
 		},
@@ -283,6 +292,11 @@ func parseDomainFormat(s string) domain.Format {
 // informRuntimePrerequisites reports host-local runtime checks without
 // preventing conversion for a different target machine.
 func informRuntimePrerequisites(cmd *cobra.Command, format domain.Format, source string, extract bool) {
+	// Conventional packages have no Waydroid/FUSE prerequisite. Avoid probing
+	// PATH, /dev/fuse and multiple library directories on every command.
+	if format != domain.FormatAndroidAPK && format != domain.FormatAppImage {
+		return
+	}
 	notices, err := prerequisites.Check(format, source, extract, prerequisites.DetectHostState(), resolver.DetectHostDistro())
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "[WARN] Could not check runtime prerequisites: %v\n", err)
