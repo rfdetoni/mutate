@@ -225,3 +225,5 @@ Archive extraction defaults: 250,000 entries, 16 GiB of decompressed payload, 8 
 To reuse a prepared offline Go/Cargo dependency cache, optionally set `MUTATE_BUILD_CACHE_DIR=/path/to/cache`. Bubblewrap mounts it read-only under `/mutate-cache`; Go modules live under `go-mod/` and Cargo under `cargo/`. Network access remains disabled.
 
 The expensive five-distro integration matrix is **manual**. PRs use a single Go test/formatter/installer job. Real-package tests are opt-in and require all fixture files, with mandatory failures reported correctly.
+
+To opt into the real-package integration suite, download the upstream samples first and run `RUN_REAL_PACKAGES=1 ./tests/os_matrix/run_matrix.sh --mode local`. Cross-format combinations without an explicit dependency map or sandboxed source environment are explicitly reported as **SKIP**, not **PASS**.

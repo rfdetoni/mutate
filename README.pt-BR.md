@@ -228,3 +228,5 @@ A extração tem limites padrão: 250.000 entradas, 16 GiB de dados descompactad
 Opcionalmente `MUTATE_BUILD_CACHE_DIR=/caminho/cache` monta cache offline `go-mod/` e `cargo/` **somente leitura** no Bubblewrap, mantendo a rede bloqueada.
 
 A matriz de cinco distribuições roda **sob demanda**, reduzindo o custo do GitHub Actions. Os PRs usam um job rápido. Testes de pacotes reais são opt-in e falhas obrigatórias deixam de ser ignoradas.
+
+Para testar os pacotes reais sob demanda, baixe primeiro as amostras e execute `RUN_REAL_PACKAGES=1 ./tests/os_matrix/run_matrix.sh --mode local`. Conversões que exigem mapeamento explícito de dependências ou ambiente de compilação isolado são registradas como **SKIP**, não **PASS**.

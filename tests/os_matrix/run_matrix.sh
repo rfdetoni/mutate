@@ -130,6 +130,7 @@ for os_name in "${OS_LIST[@]}"; do
         -v "${FIXTURES_DIR}:/fixtures:ro" \
         "${EXTRA_VOLUMES[@]}" \
         -e "MUTATE_SOURCE_URL=https://codeload.github.com/rfdetoni/mutate/tar.gz/refs/heads/main" \
+        -e "RUN_REAL_PACKAGES=${RUN_REAL_PACKAGES:-0}" \
         "${img}" \
         /workspace/tests/os_matrix/test_in_container.sh /fixtures "${INSTALL_CMD}"; then
         RESULTS["$os_name"]="PASS"
