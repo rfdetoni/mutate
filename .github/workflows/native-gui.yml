@@ -1,0 +1,32 @@
+name: Native Wails desktop validation
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'cmd/mutate/gui.go'
+      - 'install.sh'
+      - '.github/workflows/native-gui.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux-webkit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: desktop/go.mod
+          cache: false
+      - name: Install native GTK/WebKit build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends pkg-config gcc libgtk-4-dev libwebkitgtk-6.0-dev
+      - name: Build and test Wails desktop
+        working-directory: desktop
+        run: |
+          go test ./...
+          CGO_ENABLED=1 go build -trimpath -o /tmp/mutate-gui .
+          test -s /tmp/mutate-gui
