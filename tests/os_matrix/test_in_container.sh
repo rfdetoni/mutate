@@ -107,7 +107,7 @@ for pkg in ${PACKAGES}; do
     if [ "${pkg}" = "sample-source.tar.gz" ]; then
         # Source compilation requires user namespaces in bubblewrap, which are
         # unavailable on many container runners. Validate opt-in separately.
-        pass "source build skipped (isolated build environment not guaranteed)"
+        warn "source build skipped (isolated build environment not guaranteed)"
     elif /usr/local/bin/mutate build "${pkg_path}" ${build_flags} >"${TEST_OUT}/build.log" 2>&1; then
         [ -s "${out_pkg}" ] || fail "empty output for ${pkg}"
         pass "mutate build ${pkg} -> ${NATIVE_FMT}"
