@@ -99,39 +99,62 @@ func (r *DebianResolver) searchDpkgInfo(soName string) (string, error) {
 	return "", ErrNotFound
 }
 
- // ResolveMany checks only SONAMEs needed by the inspected package. Unlike
- // Resolve, it avoids constructing an index of every installed shared library.
- // Package ownership remains first-match in the sorted dpkg info directory.
+// ResolveMany checks only SONAMEs needed by the inspected package. Unlike
+// Resolve, it avoids constructing an index of every installed shared library.
+// Package ownership remains first-match in the sorted dpkg info directory.
 func (r *DebianResolver) ResolveMany(libs []string) map[string]string {
- found:=make(map[string]string,len(libs))
- wanted:=make(map[string]struct{},len(libs))
- for _,name:=range libs { if name!="" {wanted[name]=struct{}{}} }
- if len(wanted)==0{return found}
- entries,err:=os.ReadDir(r.dpkgInfoDir)
- if err==nil{
-scan:
-  for _,entry:=range entries{
-   if entry.IsDir()||!strings.HasSuffix(entry.Name(),".list"){continue}
-   file,err:=os.Open(filepath.Join(r.dpkgInfoDir,entry.Name()))
-   if err!=nil{continue}
-   pkg:=strings.TrimSuffix(entry.Name(),".list")
-   if idx:=strings.Index(pkg,":");idx>0{pkg=pkg[:idx]}
-   scanner:=bufio.NewScanner(file)
-   for scanner.Scan(){
-    base:=filepath.Base(scanner.Text())
-    if _,ok:=wanted[base];!ok{continue}
-    if _,ok:=found[base];ok{continue}
-    found[base]=pkg
-    if len(found)==len(wanted){ _=file.Close();break scan}
-   }
-   _=file.Close()
-  }
- }
- // Preserve the legacy external fallback on genuinely missing SONAMEs,
- // without scanning the complete local database a second time.
- for name:=range wanted{
-  if _,ok:=found[name];ok{continue}
-  if pkg,err:=r.resolveViaDpkg(name);err==nil&&pkg!=""{found[name]=pkg}
- }
- return found
+	found := make(map[string]string, len(libs))
+	wanted := make(map[string]struct{}, len(libs))
+	for _, name := range libs {
+		if name != "" {
+			wanted[name] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 {
+		return found
+	}
+	entries, err := os.ReadDir(r.dpkgInfoDir)
+	if err == nil {
+	scan:
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".list") {
+				continue
+			}
+			file, err := os.Open(filepath.Join(r.dpkgInfoDir, entry.Name()))
+			if err != nil {
+				continue
+			}
+			pkg := strings.TrimSuffix(entry.Name(), ".list")
+			if idx := strings.Index(pkg, ":"); idx > 0 {
+				pkg = pkg[:idx]
+			}
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				base := filepath.Base(scanner.Text())
+				if _, ok := wanted[base]; !ok {
+					continue
+				}
+				if _, ok := found[base]; ok {
+					continue
+				}
+				found[base] = pkg
+				if len(found) == len(wanted) {
+					_ = file.Close()
+					break scan
+				}
+			}
+			_ = file.Close()
+		}
+	}
+	// Preserve the legacy external fallback on genuinely missing SONAMEs,
+	// without scanning the complete local database a second time.
+	for name := range wanted {
+		if _, ok := found[name]; ok {
+			continue
+		}
+		if pkg, err := r.resolveViaDpkg(name); err == nil && pkg != "" {
+			found[name] = pkg
+		}
+	}
+	return found
 }
