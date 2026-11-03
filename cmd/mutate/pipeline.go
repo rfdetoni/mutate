@@ -35,6 +35,7 @@ func distroForFormat(target string) (resolver.Distro, domain.Format, error) {
 type conversionOptions struct {
 	LibraryDir        string
 	DependencyMapPath string
+	Extract           bool
 }
 
 // prepareConversion maintains compatibility with existing callers.
@@ -94,9 +95,21 @@ func prepareConversionWithOptions(src, target string, allowSourceBuild bool, opt
 	if err != nil {
 		return fail(err)
 	}
-	ir, err := u.Unpack(src, stage)
+	if opts.Extract && format != domain.FormatAppImage {
+		return fail(fmt.Errorf("--extract is only applicable to AppImage; other formats use their normal conversion path"))
+	}
+	var ir *domain.PackageIR
+	if !opts.Extract {
+		if preserver, ok := u.(unpacker.PortablePreserver); ok {
+			ir, err = preserver.Preserve(src, stage)
+		} else {
+			ir, err = u.Unpack(src, stage)
+		}
+	} else {
+		ir, err = u.Unpack(src, stage)
+	}
 	if err != nil {
-		return fail(fmt.Errorf("unpack: %w", err))
+		return fail(fmt.Errorf("prepare package: %w", err))
 	}
 	if ir.Metadata.Name == "" || strings.ContainsAny(ir.Metadata.Name, "/\\\x00\n\r\t\"' ;$`") || ir.Metadata.Name == "." || ir.Metadata.Name == ".." {
 		return fail(fmt.Errorf("invalid package name %q", ir.Metadata.Name))
@@ -109,9 +122,16 @@ func prepareConversionWithOptions(src, target string, allowSourceBuild bool, opt
 			return fail(fmt.Errorf("sandboxed source build: %w", err))
 		}
 	}
-	analysis, err := elfanalyzer.AnalyzePackage(ir)
-	if err != nil {
-		return fail(err)
+	// A preserved AppImage is opaque and includes its own runtime libraries.
+	// Do not interpret ELF imports of the embedded runtime as dependencies of
+	// the target package; its external FUSE/runtime needs remain with the user.
+	var libraries []string
+	if format != domain.FormatAppImage || opts.Extract {
+		analysis, err := elfanalyzer.AnalyzePackage(ir)
+		if err != nil {
+			return fail(err)
+		}
+		libraries = analysis.ExternalLibraries
 	}
 	host := resolver.DetectHostDistro()
 	crossFormat := format != targetFormat && format != domain.FormatAppImage && format != domain.FormatTarball && format != domain.FormatAndroidAPK
@@ -150,7 +170,7 @@ func prepareConversionWithOptions(src, target string, allowSourceBuild bool, opt
 			return fail(err)
 		}
 	}
-	for _, lib := range analysis.ExternalLibraries {
+	for _, lib := range libraries {
 		provider := mapped["so:"+lib]
 		if provider == "" && native != nil {
 			if found, e := native.Resolve(lib); e == nil {

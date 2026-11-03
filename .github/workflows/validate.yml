@@ -1,7 +1,7 @@
 name: Mutate validation
 on:
   push:
-    branches: [feat/appimage-type1]
+    branches: [feat/preserve-self-contained]
   workflow_dispatch:
 permissions:
   contents: write
