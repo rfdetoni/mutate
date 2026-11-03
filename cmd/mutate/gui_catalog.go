@@ -16,10 +16,7 @@ func (a *guiApp) handleCatalogSearch(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
 	defer cancel()
-	result, err := catalog.Search(ctx, catalog.Options{
-		Host: resolver.DetectHostDistro(), Query: query,
-		IncludeAUR: r.URL.Query().Get("aur") != "0",
-	})
+    result, err := a.repositories.Search(ctx, resolver.DetectHostDistro(), query)
 	if err != nil {
 		if _, e := catalog.NormalizeQuery(query); e != nil {
 			guiError(w, 400, e.Error())
@@ -140,4 +137,49 @@ func installNativeCatalogPackage(name string, host resolver.Distro) error {
 		return fmt.Errorf("falha na instalação de %s: %w", name, err)
 	}
 	return nil
+}
+
+func (a *guiApp) handleRepositoriesList(w http.ResponseWriter, _ *http.Request) {
+ guiJSON(w, http.StatusOK, map[string]any{"sources":a.repositories.Sources()})
+}
+
+func (a *guiApp) handleRepositoriesCreate(w http.ResponseWriter, r *http.Request) {
+ r.Body=http.MaxBytesReader(w,r.Body,16<<10)
+ var payload struct {
+  Name string `json:"name"`
+  URL string `json:"url"`
+ }
+ decoder:=json.NewDecoder(r.Body)
+ decoder.DisallowUnknownFields()
+ if err:=decoder.Decode(&payload);err!=nil{guiError(w,400,"Dados inválidos");return}
+ if err:=catalog.ValidateCustomRemote(payload.Name,payload.URL);err!=nil{guiError(w,400,err.Error());return}
+ source,err:=a.repositories.Add(payload.Name,payload.URL)
+ if err!=nil{guiError(w,400,err.Error());return}
+ guiJSON(w,201,source)
+}
+
+func (a *guiApp) handleRepositoriesToggle(w http.ResponseWriter,r *http.Request){
+ r.Body=http.MaxBytesReader(w,r.Body,4<<10)
+ var payload struct{Enabled *bool `json:"enabled"`}
+ decoder:=json.NewDecoder(r.Body)
+ decoder.DisallowUnknownFields()
+ if err:=decoder.Decode(&payload);err!=nil||payload.Enabled==nil{
+  guiError(w,400,"Informe o estado do repositório");return
+ }
+ if err:=a.repositories.SetEnabled(r.PathValue("id"),*payload.Enabled);err!=nil{
+  guiError(w,400,err.Error());return
+ }
+ guiJSON(w,200,map[string]bool{"updated":true})
+}
+
+func (a *guiApp) handleRepositoriesDelete(w http.ResponseWriter,r *http.Request){
+ if err:=a.repositories.Remove(r.PathValue("id"));err!=nil{
+  guiError(w,400,err.Error());return
+ }
+ guiJSON(w,200,map[string]bool{"removed":true})
+}
+
+func (a *guiApp) handleRepositoriesRefresh(w http.ResponseWriter,_ *http.Request){
+ a.repositories.StartupRefresh()
+ guiJSON(w,202,map[string]bool{"refreshing":true})
 }

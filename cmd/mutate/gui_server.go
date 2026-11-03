@@ -87,8 +87,7 @@ func newGUIApp() (*guiApp, error) {
   _ = os.RemoveAll(dir)
   return nil, fmt.Errorf("inicializar catálogos: %w", err)
  }
- repoManager.StartupRefresh()
- return &guiApp{
+  return &guiApp{
   token: token, workspace: dir, outputs: make(map[string]guiOutput),
   catalog: make(map[string]catalog.App), repositories: repoManager,
  }, nil

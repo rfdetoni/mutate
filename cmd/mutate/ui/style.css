@@ -49,9 +49,8 @@ button:focus-visible, a:focus-visible, .drop-zone:focus-visible, input:focus-vis
 .brand, .brand-copy, .header-actions { display: flex; align-items: center; }
 .brand { gap: 13px; min-width: 0; }
 .brand-mark {
-  width: 36px; height: 36px; flex: 0 0 auto; display: grid; place-items: center;
-  border: 1px solid #54418f; background: var(--accent); color: white;
-  border-radius: 7px; font-size: 19px; font-weight: 750; letter-spacing: -.06em;
+  width: 36px; height: 36px; flex: 0 0 auto; display: block;
+  border-radius: 8px; object-fit: contain;
 }
 .brand-copy { flex-direction: column; align-items: flex-start; line-height: 1.4; min-width: 0; }
 .brand-copy strong { letter-spacing: .07em; font-size: 15px; }
@@ -285,4 +284,36 @@ dialog::backdrop { background: rgba(20,25,39,.35); }
  .catalog-app-actions { justify-content: flex-start; }
  .catalog-search-row { gap: 7px; }
  .catalog-search-row button { padding-inline: 12px; }
+}
+
+/* Source management follows the dense, flat list pattern of the library. */
+.repository-heading {display:flex;align-items:center;justify-content:space-between;gap:15px;}
+.repository-heading h1 {margin:9px 0 7px;}
+.repository-heading p {max-width:560px;}
+.repository-heading .action-btn {flex:0 0 auto;}
+.repos-list {border-top:1px solid var(--line);margin-top:26px;}
+.repo-row {display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--line);padding:14px 2px;}
+.repo-info {min-width:0;}
+.repo-title {display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+.repo-title strong {font-size:12.5px;}
+.repo-endpoint {margin:5px 0;color:var(--ink-soft);font:10.5px/1.45 var(--font-mono);overflow-wrap:anywhere;}
+.repo-status {font-size:10.5px;color:var(--ink-muted);overflow-wrap:anywhere;}
+.repo-status.status-ok {color:var(--positive);}
+.repo-status.status-error {color:var(--negative);}
+.repo-status.status-updating {color:var(--accent);}
+.repo-controls {display:flex;align-items:center;gap:12px;flex:0 0 auto;}
+.repo-controls input {width:17px;height:17px;accent-color:var(--accent);cursor:pointer;}
+.repo-remove {min-height:30px;padding:5px 9px;}
+.repository-add-form {padding-top:24px;}
+.repository-add-form h2 {font-size:14px;margin:0 0 4px;}
+.repository-add-form p {font-size:11px;color:var(--ink-muted);line-height:1.6;margin:0 0 14px;}
+.repository-add-form code {font-family:var(--font-mono);}
+.repository-input-row {display:grid;grid-template-columns:1fr 1.7fr;gap:12px;margin-bottom:14px;}
+.repository-input-row label {display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:600;}
+.repository-input-row input {width:100%;padding:9px 10px;min-height:37px;border:1px solid var(--line-strong);border-radius:5px;outline-offset:2px;background:white;color:var(--ink);}
+.source-inline-status {font-size:11px;color:var(--ink-muted);margin-top:11px;}
+@media(max-width:720px) {
+ .repository-heading {align-items:flex-start;flex-direction:column;}
+ .repository-input-row {grid-template-columns:1fr;}
+ .repo-row {align-items:flex-start;}
 }
