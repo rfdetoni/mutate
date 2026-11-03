@@ -119,4 +119,11 @@ for pkg in ${PACKAGES}; do
     fi
 done
 
+# 7. Test real packages if present
+REAL_PKG_SCRIPT="/workspace/tests/real_packages/test_real_packages.sh"
+if [ -f "${REAL_PKG_SCRIPT}" ]; then
+    say "Executing real packages test suite..."
+    sh "${REAL_PKG_SCRIPT}" "/workspace/tests/real_packages" "/usr/local/bin/mutate"
+fi
+
 printf "\n${GREEN}=== ALL TESTS PASSED SUCCESSFULLY ON %s ===${NC}\n" "${PRETTY_NAME:-$OS_ID}"

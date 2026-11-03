@@ -32,6 +32,12 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
 .agents/
+
+# Real downloaded packages for tests (large binary packages)
+/tests/real_packages/*.deb
+/tests/real_packages/*.rpm
+/tests/real_packages/*.pkg.tar.zst
+/tests/real_packages/*.apk
+/tests/real_packages/*.tar.gz
+/tests/real_packages/*.AppImage

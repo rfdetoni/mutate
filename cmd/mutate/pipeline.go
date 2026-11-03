@@ -47,13 +47,20 @@ func prepareConversion(src, target string, allowSourceBuild bool, libraryDirs ..
 	return prepareConversionWithOptions(src, target, allowSourceBuild, opts)
 }
 
-func readDependencyMap(path string) (map[string]string, error) {
-	if path == "" {
+func readDependencyMap(pathOrJSON string) (map[string]string, error) {
+	if pathOrJSON == "" {
 		return map[string]string{}, nil
 	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read dependency map: %w", err)
+	var b []byte
+	trimmed := strings.TrimSpace(pathOrJSON)
+	if strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}") {
+		b = []byte(trimmed)
+	} else {
+		var err error
+		b, err = os.ReadFile(pathOrJSON)
+		if err != nil {
+			return nil, fmt.Errorf("read dependency map: %w", err)
+		}
 	}
 	var mapped map[string]string
 	if err := json.Unmarshal(b, &mapped); err != nil {
