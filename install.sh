@@ -370,6 +370,9 @@ register_desktop() {
     fi
 
     if [ "$scope" = system ]; then
+        # The installer uses umask 077 for downloads; system menu paths must
+        # remain traversable to other desktop users.
+        umask 022
         applications=/usr/local/share/applications
     else
         [ -n "${HOME:-}" ] || { warn "HOME is not set; cannot register a user launcher"; return 1; }

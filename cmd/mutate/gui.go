@@ -148,13 +148,13 @@ func registerGUIDesktop() error {
 	if err != nil {
 		return err
 	}
-	dir := filepath.Join(home, ".local", "share", "applications")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
 	dataHome := os.Getenv("XDG_DATA_HOME")
 	if !filepath.IsAbs(dataHome) {
 		dataHome = filepath.Join(home, ".local", "share")
+	}
+	dir := filepath.Join(dataHome, "applications")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
 	}
 	iconPath := filepath.Join(dataHome, "icons", "hicolor", "64x64", "apps", "mutate.png")
 	if err := exportGUIIcon(iconPath); err != nil {
