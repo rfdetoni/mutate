@@ -87,7 +87,7 @@ if [ "$MODE" = "local" ]; then
     (cd "${ROOT_DIR}" && CGO_ENABLED=0 go build -ldflags="-s -w" -o "${LOCAL_TMP}/mutate" ./cmd/mutate)
     tar -czf "${REL_DIR}/mutate_linux_amd64.tar.gz" -C "${LOCAL_TMP}" mutate
     (cd "${REL_DIR}" && sha256sum mutate_linux_amd64.tar.gz > SHA256SUMS)
-    INSTALL_CMD="MUTATE_RELEASE_BASE_URL=file:///local_release /workspace/install.sh --system"
+    INSTALL_CMD="MUTATE_RELEASE_BASE_URL=file:///local_release sh /workspace/install.sh --system"
 fi
 
 # Step 3: Define OS Matrix
@@ -130,6 +130,7 @@ for os_name in "${OS_LIST[@]}"; do
         -v "${FIXTURES_DIR}:/fixtures:ro" \
         "${EXTRA_VOLUMES[@]}" \
         -e "MUTATE_SOURCE_URL=https://codeload.github.com/rfdetoni/mutate/tar.gz/refs/heads/main" \
+        -e "RUN_REAL_PACKAGES=${RUN_REAL_PACKAGES:-0}" \
         "${img}" \
         /workspace/tests/os_matrix/test_in_container.sh /fixtures "${INSTALL_CMD}"; then
         RESULTS["$os_name"]="PASS"

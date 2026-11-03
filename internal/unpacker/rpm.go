@@ -33,6 +33,10 @@ func (u *RpmUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Package
 	}
 
 	ir := domain.NewPackageIR(stagingDir, domain.FormatRPM)
+	budget, err := newExtractionBudget()
+	if err != nil {
+		return nil, err
+	}
 	ir.Metadata = domain.Metadata{
 		Name:         pkg.Name(),
 		Version:      pkg.Version(),
@@ -101,7 +105,7 @@ func (u *RpmUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Package
 		default:
 			return nil, fmt.Errorf("unsupported rpm cpio entry %q (mode %o)", hdr.Name, hdr.Mode)
 		}
-		if err := extractArchiveEntry(stagingDir, ir, hdr.Name, kind, hdr.Linkname, os.FileMode(hdr.Mode&07777), hdr.ModTime, "", "", cpioReader); err != nil {
+		if err := extractArchiveEntry(stagingDir, ir, hdr.Name, kind, hdr.Linkname, os.FileMode(hdr.Mode&07777), hdr.ModTime, "", "", cpioReader, budget); err != nil {
 			return nil, fmt.Errorf("extract rpm entry %q: %w", hdr.Name, err)
 		}
 	}

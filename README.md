@@ -213,3 +213,17 @@ Cross-format lifecycle scripts are transformed only when their POSIX syntax can 
 On receiving an Android APK, `mutate inspect`, `build` and `install` check whether `waydroid` is in the current host's PATH and explain that Waydroid must be installed and configured on the machine running the APK. For AppImage Type 2 in preserve mode, they check `/dev/fuse` and common `libfuse.so.2` locations. Missing FUSE support produces an advisory warning and distro-specific guidance. Older AppImage runtimes may need FUSE 2, while newer runtimes may work with FUSE 3. Type 1 does not automatically imply a FUSE 2 requirement. `--extract` does not require FUSE to mount the original AppImage.
 
 These checks do not execute the source, install dependencies or block package creation. The current host may differ from the destination host; a detected executable/library does not prove that the relevant service or runtime is correctly configured.
+
+### Performance and safe package inspection
+
+Use `mutate inspect package.deb --fast` to read native package metadata without decompressing the payload or analyzing individual ELF files (DEB, RPM, Arch, Alpine and source tarballs). `mutate inspect package.rpm --json` outputs an analysis object; `--fast --json` returns metadata only. Prerequisite warnings remain on stderr, not in JSON.
+
+For preserved AppImages, filenames like `example-2.3.4-x86_64.AppImage` automatically yield package name `example` and version `2.3.4`. Otherwise set `--package-name` and `--package-version` with `mutate build` or `mutate install`. No execution or implicit extraction occurs.
+
+Archive extraction defaults: 250,000 entries, 16 GiB of decompressed payload, 8 GiB per file; metadata at most 4 MiB. Configure the global budgets via `MUTATE_MAX_EXTRACT_BYTES` and `MUTATE_MAX_EXTRACT_ENTRIES` (positive integer values). External AppImage extraction still requires low-privilege accounts and filesystem quotas.
+
+To reuse a prepared offline Go/Cargo dependency cache, optionally set `MUTATE_BUILD_CACHE_DIR=/path/to/cache`. Bubblewrap mounts it read-only under `/mutate-cache`; Go modules live under `go-mod/` and Cargo under `cargo/`. Network access remains disabled.
+
+The expensive five-distro integration matrix is **manual**. PRs use a single Go test/formatter/installer job. Real-package tests are opt-in and require all fixture files, with mandatory failures reported correctly.
+
+To opt into the real-package integration suite, download the upstream samples first and run `RUN_REAL_PACKAGES=1 ./tests/os_matrix/run_matrix.sh --mode local`. Cross-format combinations without an explicit dependency map or sandboxed source environment are explicitly reported as **SKIP**, not **PASS**.

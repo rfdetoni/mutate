@@ -26,7 +26,7 @@ fi
 # 2. sl (deb, rpm, arch)
 if [ ! -f "${DIR}/sl.deb" ]; then
     say "Downloading sl.deb..."
-    curl -fsSL -o "${DIR}/sl.deb" "http://ftp.debian.org/debian/pool/main/s/sl/sl_5.02-1_amd64.deb"
+    curl -fsSL -o "${DIR}/sl.deb" "https://deb.debian.org/debian/pool/main/s/sl/sl_5.02-1_amd64.deb"
 fi
 
 if [ ! -f "${DIR}/sl.pkg.tar.zst" ]; then

@@ -36,6 +36,8 @@ type conversionOptions struct {
 	LibraryDir        string
 	DependencyMapPath string
 	Extract           bool
+	PackageName       string
+	PackageVersion    string
 }
 
 // prepareConversion maintains compatibility with existing callers.
@@ -102,12 +104,17 @@ func prepareConversionWithOptions(src, target string, allowSourceBuild bool, opt
 	if err != nil {
 		return fail(err)
 	}
+	if (opts.PackageName != "" || opts.PackageVersion != "") && format != domain.FormatAppImage {
+		return fail(fmt.Errorf("--package-name and --package-version only apply to AppImage"))
+	}
 	if opts.Extract && format != domain.FormatAppImage {
 		return fail(fmt.Errorf("--extract is only applicable to AppImage; other formats use their normal conversion path"))
 	}
 	var ir *domain.PackageIR
 	if !opts.Extract {
-		if preserver, ok := u.(unpacker.PortablePreserver); ok {
+		if app, ok := u.(*unpacker.AppImageUnpacker); ok {
+			ir, err = app.PreserveWithMetadata(src, stage, opts.PackageName, opts.PackageVersion)
+		} else if preserver, ok := u.(unpacker.PortablePreserver); ok {
 			ir, err = preserver.Preserve(src, stage)
 		} else {
 			ir, err = u.Unpack(src, stage)
@@ -117,6 +124,14 @@ func prepareConversionWithOptions(src, target string, allowSourceBuild bool, opt
 	}
 	if err != nil {
 		return fail(fmt.Errorf("prepare package: %w", err))
+	}
+	if format == domain.FormatAppImage && opts.Extract {
+		if opts.PackageName != "" {
+			ir.Metadata.Name = opts.PackageName
+		}
+		if opts.PackageVersion != "" {
+			ir.Metadata.Version = opts.PackageVersion
+		}
 	}
 	if ir.Metadata.Name == "" || strings.ContainsAny(ir.Metadata.Name, "/\\\x00\n\r\t\"' ;$`") || ir.Metadata.Name == "." || ir.Metadata.Name == ".." {
 		return fail(fmt.Errorf("invalid package name %q", ir.Metadata.Name))

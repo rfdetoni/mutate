@@ -216,3 +216,17 @@ O empacotamento referencia diretamente o arquivo de origem; não realiza cópia 
 Ao receber um **APK Android**, os comandos `mutate inspect`, `build` e `install` verificam se `waydroid` está disponível no PATH e informam que o Waydroid precisa estar instalado e configurado para executar o aplicativo. Para **AppImage Type 2 preservado**, verificam a disponibilidade de `/dev/fuse` e `libfuse.so.2` em locais comuns, com avisos e sugestões específicas da distribuição quando ausentes. AppImages antigos podem exigir FUSE 2; runtimes mais novos podem utilizar FUSE 3. **Type 1 não exige necessariamente FUSE 2**. Com `--extract`, a extração do AppImage original não requer montagem por FUSE.
 
 Os avisos são informativos: **não instalam dependências nem bloqueiam a geração de pacotes**. A checagem considera o host atual, não necessariamente o ambiente de destino, e não comprova que serviços ou bibliotecas estejam operacionais.
+
+### Inspeção rápida, segurança e integração
+
+`mutate inspect pacote.deb --fast` obtém metadados sem extrair o conteúdo nem analisar ELF (DEB, RPM, Arch, Alpine e tarballs fonte). `mutate inspect pacote.rpm --json` produz JSON estruturado. `--fast --json` retorna apenas os metadados; avisos permanecem no stderr.
+
+AppImages chamados `exemplo-2.3.4-x86_64.AppImage` geram pacote `exemplo` com versão `2.3.4`. Use `--package-name` e `--package-version` em `build` e `install` para sobrescrever a identidade do AppImage sem extraí-lo.
+
+A extração tem limites padrão: 250.000 entradas, 16 GiB de dados descompactados, 8 GiB por arquivo, metadados de até 4 MiB. Ajuste os limites globais com `MUTATE_MAX_EXTRACT_BYTES` e `MUTATE_MAX_EXTRACT_ENTRIES`, utilizando inteiros positivos.
+
+Opcionalmente `MUTATE_BUILD_CACHE_DIR=/caminho/cache` monta cache offline `go-mod/` e `cargo/` **somente leitura** no Bubblewrap, mantendo a rede bloqueada.
+
+A matriz de cinco distribuições roda **sob demanda**, reduzindo o custo do GitHub Actions. Os PRs usam um job rápido. Testes de pacotes reais são opt-in e falhas obrigatórias deixam de ser ignoradas.
+
+Para testar os pacotes reais sob demanda, baixe primeiro as amostras e execute `RUN_REAL_PACKAGES=1 ./tests/os_matrix/run_matrix.sh --mode local`. Conversões que exigem mapeamento explícito de dependências ou ambiente de compilação isolado são registradas como **SKIP**, não **PASS**.

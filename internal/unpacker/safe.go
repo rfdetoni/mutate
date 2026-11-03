@@ -7,13 +7,69 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/rfdetoni/mutate/internal/domain"
 )
 
-const maxEntryBytes int64 = 8 << 30
+const (
+	maxEntryBytes int64 = 8 << 30
+	// Prevent decompression bombs with many small files or excessive total size.
+	maxExtractedBytes   int64 = 16 << 30
+	maxExtractedEntries       = 250000
+	maxMetadataBytes    int64 = 4 << 20
+)
+
+type extractionBudget struct {
+	entries      int
+	bytes        int64
+	limitEntries int
+	limitBytes   int64
+}
+
+func newExtractionBudget() (*extractionBudget, error) {
+	b := &extractionBudget{limitEntries: maxExtractedEntries, limitBytes: maxExtractedBytes}
+	if s := os.Getenv("MUTATE_MAX_EXTRACT_BYTES"); s != "" {
+		v, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || v <= 0 {
+			return nil, fmt.Errorf("MUTATE_MAX_EXTRACT_BYTES must be a positive integer")
+		}
+		b.limitBytes = v
+	}
+	if s := os.Getenv("MUTATE_MAX_EXTRACT_ENTRIES"); s != "" {
+		v, err := strconv.Atoi(s)
+		if err != nil || v <= 0 {
+			return nil, fmt.Errorf("MUTATE_MAX_EXTRACT_ENTRIES must be a positive integer")
+		}
+		b.limitEntries = v
+	}
+	return b, nil
+}
+
+func (b *extractionBudget) reserveEntry() error {
+	b.entries++
+	limit := b.limitEntries
+	if limit == 0 {
+		limit = maxExtractedEntries
+	}
+	if b.entries > limit {
+		return fmt.Errorf("archive exceeds %d entries", limit)
+	}
+	return nil
+}
+
+func readMetadata(data io.Reader) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(data, maxMetadataBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > maxMetadataBytes {
+		return nil, fmt.Errorf("package metadata exceeds %d bytes", maxMetadataBytes)
+	}
+	return b, nil
+}
 
 // archiveDestination rejects traversal and symlink parents, including paths
 // already declared as symlinks by the input package.
@@ -58,7 +114,13 @@ func archiveDestination(root, name string, ir *domain.PackageIR) (string, string
 
 // The package IR retains symlinks without creating them on the staging disk.
 // Source builds may materialize only symlinks whose resolved target stays in staging.
-func extractArchiveEntry(root string, ir *domain.PackageIR, name string, kind byte, link string, mode os.FileMode, modified time.Time, owner, group string, data io.Reader) error {
+func extractArchiveEntry(root string, ir *domain.PackageIR, name string, kind byte, link string, mode os.FileMode, modified time.Time, owner, group string, data io.Reader, budget *extractionBudget) error {
+	if budget == nil {
+		return fmt.Errorf("missing archive extraction budget")
+	}
+	if err := budget.reserveEntry(); err != nil {
+		return err
+	}
 	dest, host, err := archiveDestination(root, name, ir)
 	if err != nil {
 		return err
@@ -116,7 +178,20 @@ func extractArchiveEntry(root string, ir *domain.PackageIR, name string, kind by
 		if err != nil {
 			return err
 		}
-		n, copyErr := io.Copy(out, io.LimitReader(data, maxEntryBytes+1))
+		maxBytes := budget.limitBytes
+		if maxBytes == 0 {
+			maxBytes = maxExtractedBytes
+		}
+		remaining := maxBytes - budget.bytes
+		limit := maxEntryBytes
+		if remaining < limit {
+			limit = remaining
+		}
+		if limit < 0 {
+			_ = out.Close()
+			return fmt.Errorf("archive extraction exceeds total size limit")
+		}
+		n, copyErr := io.Copy(out, io.LimitReader(data, limit+1))
 		closeErr := out.Close()
 		if copyErr != nil {
 			return fmt.Errorf("extract %q: %w", name, copyErr)
@@ -124,9 +199,10 @@ func extractArchiveEntry(root string, ir *domain.PackageIR, name string, kind by
 		if closeErr != nil {
 			return closeErr
 		}
-		if n > maxEntryBytes {
+		if n > maxEntryBytes || n > remaining {
 			return fmt.Errorf("archive entry exceeds %d bytes: %q", maxEntryBytes, name)
 		}
+		budget.bytes += n
 		if err := os.Chmod(dest, mode.Perm()); err != nil {
 			return err
 		}

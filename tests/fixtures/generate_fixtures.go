@@ -2,8 +2,8 @@ package main
 
 import (
 	"archive/tar"
-	"archive/zip"
 	"compress/gzip"
+	_ "embed"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -12,6 +12,9 @@ import (
 	"github.com/rfdetoni/mutate/internal/domain"
 	"github.com/rfdetoni/mutate/internal/packager"
 )
+
+//go:embed sample-android.apk
+var androidAPKFixture []byte
 
 func main() {
 	outDir := "tests/fixtures"
@@ -133,7 +136,7 @@ func generateSourceTarball(outPath string) error {
 	defer tw.Close()
 
 	files := map[string]string{
-		"sample-src/Makefile": "all:\n\t@echo 'Built'\ninstall:\n\tmkdir -p $(DESTDIR)/usr/bin\n\tcp sample-tool $(DESTDIR)/usr/bin/\n",
+		"sample-src/Makefile":    "all:\n\t@echo 'Built'\ninstall:\n\tmkdir -p $(DESTDIR)/usr/bin\n\tcp sample-tool $(DESTDIR)/usr/bin/\n",
 		"sample-src/sample-tool": "#!/bin/sh\necho 'Source built tool'\n",
 	}
 
@@ -175,48 +178,11 @@ func generateAppImage(outPath string) error {
 	return os.WriteFile(outPath, b, 0755)
 }
 
+// Reuse the checked-in Android fixture instead of relying on a specific
+// developer's Go module cache path. The generator is reproducible on CI.
 func generateAndroidApk(outPath string) error {
-	f, err := os.Create(outPath)
-	if err != nil {
-		return err
+	if len(androidAPKFixture) == 0 {
+		return fmt.Errorf("embedded Android fixture is empty")
 	}
-	defer f.Close()
-
-	zw := zip.NewWriter(f)
-	defer zw.Close()
-
-	// Locate sample binary AXML from apkparser testdata if present
-	candidates := []string{
-		"/home/toni/go/pkg/mod/github.com/avast/apkparser@v0.0.0-20260423123151-7fcaee440f68/testdata/a3ee88cf1492237a1be846df824f9de30a6f779973fe3c41c7d7ed0be644ba37.bin",
-		"/home/toni/go/pkg/mod/github.com/avast/apkparser@v0.0.0-20260423123151-7fcaee440f68/testdata/98d2e837b8f3ac41e74b86b2d532972955e5352197a893206ecd9650f678ae31.bin",
-	}
-
-	var axmlData []byte
-	for _, c := range candidates {
-		if data, err := os.ReadFile(c); err == nil && len(data) > 0 {
-			axmlData = data
-			break
-		}
-	}
-
-	if len(axmlData) == 0 {
-		return fmt.Errorf("could not find reference binary AXML in apkparser testdata")
-	}
-
-	w, err := zw.Create("AndroidManifest.xml")
-	if err != nil {
-		return err
-	}
-	if _, err := w.Write(axmlData); err != nil {
-		return err
-	}
-
-	// Add dummy classes.dex
-	wDex, err := zw.Create("classes.dex")
-	if err != nil {
-		return err
-	}
-	wDex.Write([]byte("dex\n035\x00dummy-dex-data"))
-
-	return nil
+	return os.WriteFile(outPath, androidAPKFixture, 0644)
 }

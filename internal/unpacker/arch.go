@@ -42,6 +42,10 @@ func (u *ArchUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Packag
 
 	tr := tar.NewReader(decomp)
 	ir := domain.NewPackageIR(stagingDir, domain.FormatArch)
+	budget, err := newExtractionBudget()
+	if err != nil {
+		return nil, err
+	}
 
 	for {
 		hdr, err := tr.Next()
@@ -60,7 +64,7 @@ func (u *ArchUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Packag
 		// Handle Arch metadata files
 		switch cleanName {
 		case ".PKGINFO":
-			data, err := io.ReadAll(tr)
+			data, err := readMetadata(tr)
 			if err != nil {
 				return nil, fmt.Errorf("read .PKGINFO: %w", err)
 			}
@@ -87,7 +91,7 @@ func (u *ArchUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Packag
 		if hdr.Size > maxEntryBytes {
 			return nil, fmt.Errorf("archive entry too large: %q", hdr.Name)
 		}
-		if err := extractArchiveEntry(stagingDir, ir, hdr.Name, hdr.Typeflag, hdr.Linkname, hdr.FileInfo().Mode(), hdr.ModTime, hdr.Uname, hdr.Gname, tr); err != nil {
+		if err := extractArchiveEntry(stagingDir, ir, hdr.Name, hdr.Typeflag, hdr.Linkname, hdr.FileInfo().Mode(), hdr.ModTime, hdr.Uname, hdr.Gname, tr, budget); err != nil {
 			return nil, fmt.Errorf("extract %q: %w", hdr.Name, err)
 		}
 	}

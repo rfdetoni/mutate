@@ -132,7 +132,7 @@ func (u *SourceUnpacker) CompileAndInstall(workDir, destDir string, buildSys Bui
 		if err := run("cmake", "--build", buildDir); err != nil {
 			return err
 		}
-		return run("cmake", "--install", buildDir, "--prefix", filepath.Join(destDir, "usr"))
+		return run("cmake", "--install", buildDir)
 	case BuildSystemMeson:
 		buildDir := filepath.Join(workDir, "build")
 		if err := run("meson", "setup", buildDir, "--prefix=/usr"); err != nil {

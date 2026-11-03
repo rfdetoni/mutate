@@ -45,6 +45,10 @@ func DecompressStream(r io.Reader, compType string) (io.ReadCloser, error) {
 
 // ExtractTarStream extracts a tar stream into targetDir safely preventing ZipSlip/path traversal.
 func ExtractTarStream(tr *tar.Reader, targetDir string, ir *domain.PackageIR) error {
+	budget, err := newExtractionBudget()
+	if err != nil {
+		return err
+	}
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -59,7 +63,7 @@ func ExtractTarStream(tr *tar.Reader, targetDir string, ir *domain.PackageIR) er
 		if hdr.Size > maxEntryBytes {
 			return fmt.Errorf("archive entry too large: %q", hdr.Name)
 		}
-		if err := extractArchiveEntry(targetDir, ir, hdr.Name, hdr.Typeflag, hdr.Linkname, hdr.FileInfo().Mode(), hdr.ModTime, hdr.Uname, hdr.Gname, tr); err != nil {
+		if err := extractArchiveEntry(targetDir, ir, hdr.Name, hdr.Typeflag, hdr.Linkname, hdr.FileInfo().Mode(), hdr.ModTime, hdr.Uname, hdr.Gname, tr, budget); err != nil {
 			return fmt.Errorf("extract %q: %w", hdr.Name, err)
 		}
 	}

@@ -1,9 +1,6 @@
 name: Multi-OS Package Matrix Test
+# Expensive five-distro matrix is intentionally manual.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
