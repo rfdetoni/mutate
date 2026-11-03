@@ -158,8 +158,26 @@ mutate/
 
 ## Running Tests
 
+### Unit & Integration Tests
 ```bash
 go test -v ./...
+```
+
+### Multi-OS VM / Container Test Matrix
+Tests installation via `curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --system` and validates all 7 package formats across Debian, Ubuntu, Fedora, Arch Linux, and Alpine:
+
+```bash
+# Run matrix test across all 5 OS environments (fast local mode)
+make test-matrix-local
+# or
+./tests/os_matrix/run_matrix.sh --mode local
+
+# Run online curl installation test
+./tests/os_matrix/run_matrix.sh --mode online
+
+# Run test on a specific OS only (alpine, debian, ubuntu, fedora, arch)
+./tests/os_matrix/run_matrix.sh --os alpine
+./tests/os_matrix/run_matrix.sh --os fedora
 ```
 
 ---

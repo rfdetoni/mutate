@@ -32,6 +32,9 @@ func (u *AlpineUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pack
 	br := bufio.NewReader(f)
 
 	for {
+		if _, err := br.Peek(1); err != nil {
+			break
+		}
 		gzr, err := gzip.NewReader(br)
 		if errors.Is(err, io.EOF) {
 			break
@@ -98,6 +101,7 @@ func (u *AlpineUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Pack
 			}
 		}
 
+		io.Copy(io.Discard, gzr)
 		gzr.Close()
 	}
 

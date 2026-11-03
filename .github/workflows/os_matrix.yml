@@ -1,0 +1,34 @@
+name: Multi-OS Package Matrix Test
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  matrix-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os_target: [alpine, debian, ubuntu, fedora, arch]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Generate Package Fixtures
+        run: |
+          go run tests/fixtures/generate_fixtures.go tests/fixtures
+
+      - name: Run Test on ${{ matrix.os_target }}
+        run: |
+          ./tests/os_matrix/run_matrix.sh --os ${{ matrix.os_target }} --mode local

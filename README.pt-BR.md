@@ -149,8 +149,26 @@ mutate/
 
 ## Executando os Testes
 
+### Testes Unitários e de Integração
 ```bash
 go test -v ./...
+```
+
+### Matriz de Testes Multi-OS (VMs / Containers)
+Executa a validação da instalação via `curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --system` e testa todos os 7 formatos de pacote no Debian, Ubuntu, Fedora, Arch Linux e Alpine:
+
+```bash
+# Executar a matriz em todos os 5 ambientes OS (modo local rápido)
+make test-matrix-local
+# ou
+./tests/os_matrix/run_matrix.sh --mode local
+
+# Executar teste de instalação online oficial via curl
+./tests/os_matrix/run_matrix.sh --mode online
+
+# Executar em uma distribuição específica (alpine, debian, ubuntu, fedora, arch)
+./tests/os_matrix/run_matrix.sh --os alpine
+./tests/os_matrix/run_matrix.sh --os fedora
 ```
 
 ---

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/cavaliergopher/cpio"
 	"github.com/cavaliergopher/rpm"
@@ -44,7 +45,10 @@ func (u *RpmUnpacker) Unpack(srcPath string, stagingDir string) (*domain.Package
 	}
 
 	for _, req := range pkg.Requires() {
-		ir.Metadata.Dependencies = append(ir.Metadata.Dependencies, req.Name())
+		name := req.Name()
+		if !strings.HasPrefix(name, "rpmlib(") {
+			ir.Metadata.Dependencies = append(ir.Metadata.Dependencies, name)
+		}
 	}
 	for _, prov := range pkg.Provides() {
 		ir.Metadata.Provides = append(ir.Metadata.Provides, prov.Name())
