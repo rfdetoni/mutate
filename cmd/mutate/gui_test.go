@@ -277,42 +277,48 @@ func TestGUICatalogRejectsUntrustedInstallAndInvalidQueries(t *testing.T) {
 }
 
 func TestGUIRepositoryEndpointsAndIconExport(t *testing.T) {
- t.Setenv("XDG_CONFIG_HOME",t.TempDir())
- app,err:=newGUIApp()
- if err!=nil{t.Fatal(err)}
- defer app.close()
- app.address="127.0.0.1"
- h:=app.handler()
- request:=guiTestRequest(app,"GET","/api/repositories",nil)
- recorder:=httptest.NewRecorder()
- h.ServeHTTP(recorder,request)
- if recorder.Code!=200||!strings.Contains(recorder.Body.String(),"Arch Linux"){
-  t.Fatalf("initial sources unavailable: %d %s",recorder.Code,recorder.Body.String())
- }
- toggle:=guiTestRequest(app,"POST","/api/repositories/aur/enabled",strings.NewReader(`{"enabled":false}`))
- toggle.Header.Set("Content-Type","application/json")
- recorder=httptest.NewRecorder()
- h.ServeHTTP(recorder,toggle)
- if recorder.Code!=200{t.Fatalf("toggle repository: %d %s",recorder.Code,recorder.Body.String())}
- request=guiTestRequest(app,"GET","/api/repositories",nil)
- recorder=httptest.NewRecorder()
- h.ServeHTTP(recorder,request)
- if recorder.Code!=200||!strings.Contains(recorder.Body.String(),"\"enabled\":false"){
-  t.Fatalf("toggle not visible: %d %s",recorder.Code,recorder.Body.String())
- }
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	app, err := newGUIApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.close()
+	app.address = "127.0.0.1"
+	h := app.handler()
+	request := guiTestRequest(app, "GET", "/api/repositories", nil)
+	recorder := httptest.NewRecorder()
+	h.ServeHTTP(recorder, request)
+	if recorder.Code != 200 || !strings.Contains(recorder.Body.String(), "Arch Linux") {
+		t.Fatalf("initial sources unavailable: %d %s", recorder.Code, recorder.Body.String())
+	}
+	toggle := guiTestRequest(app, "POST", "/api/repositories/aur/enabled", strings.NewReader(`{"enabled":false}`))
+	toggle.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	h.ServeHTTP(recorder, toggle)
+	if recorder.Code != 200 {
+		t.Fatalf("toggle repository: %d %s", recorder.Code, recorder.Body.String())
+	}
+	request = guiTestRequest(app, "GET", "/api/repositories", nil)
+	recorder = httptest.NewRecorder()
+	h.ServeHTTP(recorder, request)
+	if recorder.Code != 200 || !strings.Contains(recorder.Body.String(), "\"enabled\":false") {
+		t.Fatalf("toggle not visible: %d %s", recorder.Code, recorder.Body.String())
+	}
 
- icon:=guiTestRequest(app,"GET","/mutate.png",nil)
- recorder=httptest.NewRecorder()
- h.ServeHTTP(recorder,icon)
- if recorder.Code!=200||!bytes.HasPrefix(recorder.Body.Bytes(),[]byte{137,80,78,71,13,10,26,10}){
-  t.Fatalf("embedded icon invalid: %d",recorder.Code)
- }
- destination:=filepath.Join(t.TempDir(),"icons","mutate.png")
- command:=newGUICmd()
- command.SetArgs([]string{"--export-icon",destination})
- if err:=command.Execute();err!=nil{t.Fatal(err)}
- data,err:=os.ReadFile(destination)
- if err!=nil||!bytes.HasPrefix(data,[]byte{137,80,78,71,13,10,26,10}){
-  t.Fatalf("exported icon is invalid: %v",err)
- }
+	icon := guiTestRequest(app, "GET", "/mutate.png", nil)
+	recorder = httptest.NewRecorder()
+	h.ServeHTTP(recorder, icon)
+	if recorder.Code != 200 || !bytes.HasPrefix(recorder.Body.Bytes(), []byte{137, 80, 78, 71, 13, 10, 26, 10}) {
+		t.Fatalf("embedded icon invalid: %d", recorder.Code)
+	}
+	destination := filepath.Join(t.TempDir(), "icons", "mutate.png")
+	command := newGUICmd()
+	command.SetArgs([]string{"--export-icon", destination})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(destination)
+	if err != nil || !bytes.HasPrefix(data, []byte{137, 80, 78, 71, 13, 10, 26, 10}) {
+		t.Fatalf("exported icon is invalid: %v", err)
+	}
 }

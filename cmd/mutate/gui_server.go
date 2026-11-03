@@ -55,18 +55,18 @@ type guiHistory struct {
 type guiOutput struct{ Path, Name string }
 
 type guiApp struct {
-	mu        sync.Mutex
-	token     string
-	address   string
-	workspace string
-	selected  *guiPackage
-	job       *guiJob
-	history   []guiHistory
-	outputs   map[string]guiOutput
-	catalog   map[string]catalog.App
- repositories *catalog.RepositoryManager
-	busy      bool
-	shutdown  func()
+	mu           sync.Mutex
+	token        string
+	address      string
+	workspace    string
+	selected     *guiPackage
+	job          *guiJob
+	history      []guiHistory
+	outputs      map[string]guiOutput
+	catalog      map[string]catalog.App
+	repositories *catalog.RepositoryManager
+	busy         bool
+	shutdown     func()
 }
 
 func newGUIApp() (*guiApp, error) {
@@ -83,18 +83,20 @@ func newGUIApp() (*guiApp, error) {
 		return nil, err
 	}
 	repoManager, err := catalog.NewRepositoryManager("", nil)
- if err != nil {
-  _ = os.RemoveAll(dir)
-  return nil, fmt.Errorf("inicializar catálogos: %w", err)
- }
-  return &guiApp{
-  token: token, workspace: dir, outputs: make(map[string]guiOutput),
-  catalog: make(map[string]catalog.App), repositories: repoManager,
- }, nil
+	if err != nil {
+		_ = os.RemoveAll(dir)
+		return nil, fmt.Errorf("inicializar catálogos: %w", err)
+	}
+	return &guiApp{
+		token: token, workspace: dir, outputs: make(map[string]guiOutput),
+		catalog: make(map[string]catalog.App), repositories: repoManager,
+	}, nil
 }
 func (a *guiApp) close() {
- if a.repositories != nil {a.repositories.Close()}
- _ = os.RemoveAll(a.workspace)
+	if a.repositories != nil {
+		a.repositories.Close()
+	}
+	_ = os.RemoveAll(a.workspace)
 }
 
 func guiJSON(w http.ResponseWriter, status int, value any) {
@@ -110,11 +112,11 @@ func (a *guiApp) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/state", a.handleState)
 	mux.HandleFunc("GET /api/catalog", a.handleCatalogSearch)
- mux.HandleFunc("GET /api/repositories", a.handleRepositoriesList)
- mux.HandleFunc("POST /api/repositories", a.handleRepositoriesCreate)
- mux.HandleFunc("POST /api/repositories/{id}/enabled", a.handleRepositoriesToggle)
- mux.HandleFunc("DELETE /api/repositories/{id}", a.handleRepositoriesDelete)
- mux.HandleFunc("POST /api/repositories/refresh", a.handleRepositoriesRefresh)
+	mux.HandleFunc("GET /api/repositories", a.handleRepositoriesList)
+	mux.HandleFunc("POST /api/repositories", a.handleRepositoriesCreate)
+	mux.HandleFunc("POST /api/repositories/{id}/enabled", a.handleRepositoriesToggle)
+	mux.HandleFunc("DELETE /api/repositories/{id}", a.handleRepositoriesDelete)
+	mux.HandleFunc("POST /api/repositories/refresh", a.handleRepositoriesRefresh)
 	mux.HandleFunc("POST /api/catalog/install", a.handleCatalogInstall)
 	mux.HandleFunc("POST /api/upload", a.handleUpload)
 	mux.HandleFunc("POST /api/action", a.handleAction)
