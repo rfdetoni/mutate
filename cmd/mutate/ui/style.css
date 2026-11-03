@@ -219,7 +219,7 @@ dialog::backdrop { background: rgba(20,25,39,.35); }
 }
 @media (max-width: 900px) {
   /* Stacked layouts need normal document scrolling for their longer forms. */
-  .app-shell { height: auto; min-height: calc(100dvh - var(--shell-gutter) - var(--shell-gutter)); }
+  .app-shell { height: auto; min-height: calc(100dvh - var(--shell-gutter) - var(--shell-gutter)); margin: var(--shell-gutter) auto; }
   .main-content, .details-panel { overflow-y: visible; }
   .app-layout { grid-template-columns: 156px minmax(0,1fr); }
   .details-panel { grid-column: 2; border-left: 0; border-top: 1px solid var(--line); padding: 22px 23px; }
