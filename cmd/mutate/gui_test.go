@@ -3,8 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
- "image/png"
 	"github.com/rfdetoni/mutate/internal/catalog"
+	"image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -325,10 +325,16 @@ func TestGUIRepositoryEndpointsAndIconExport(t *testing.T) {
 }
 
 func TestGUIApprovedIconDecodesFully(t *testing.T) {
- data,err:=guiAssets.ReadFile("ui/mutate.png")
- if err!=nil{t.Fatal(err)}
- image,err:=png.Decode(bytes.NewReader(data))
- if err!=nil{t.Fatalf("bundled PNG is corrupted: %v",err)}
- bounds:=image.Bounds()
- if bounds.Dx()!=64||bounds.Dy()!=64{t.Fatalf("unexpected icon dimensions %s",bounds)}
+	data, err := guiAssets.ReadFile("ui/mutate.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("bundled PNG is corrupted: %v", err)
+	}
+	bounds := image.Bounds()
+	if bounds.Dx() != 64 || bounds.Dy() != 64 {
+		t.Fatalf("unexpected icon dimensions %s", bounds)
+	}
 }
