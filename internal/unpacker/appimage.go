@@ -115,15 +115,6 @@ func (u *AppImageUnpacker) Unpack(src, stage string) (*domain.PackageIR, error) 
 	if len(base) > 64 {
 		base = base[:64]
 	}
-	fsDir := filepath.Join(stage, "appdir")
-	if err := os.MkdirAll(fsDir, 0700); err != nil {
-		return nil, err
-	}
-	// Extract without running the embedded executable. No shell interpolation.
-	cmd := exec.Command(exe, "-no-progress", "-no-xattrs", "-offset", fmt.Sprint(offset), "-dest", fsDir, src)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("unsquashfs failed: %w: %s", err, string(out))
-	}
 	appRun := filepath.Join(fsDir, "AppRun")
 	st, err := os.Lstat(appRun)
 	if err != nil {
