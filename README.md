@@ -170,3 +170,9 @@ Provide a verified JSON map with `--dependency-map deps.json` when source and de
 ```
 
 Cross-format lifecycle scripts are transformed only when their POSIX syntax can be conservatively translated. Arch installation functions are split into lifecycle stages; unsupported upgrade hooks and source-specific package-manager commands are rejected rather than silently changed. Mapping package names does not prove ABI/runtime compatibility.
+
+### Runtime prerequisite notices
+
+On receiving an Android APK, `mutate inspect`, `build` and `install` check whether `waydroid` is in the current host's PATH and explain that Waydroid must be installed and configured on the machine running the APK. For AppImage Type 2 in preserve mode, they check `/dev/fuse` and common `libfuse.so.2` locations. Missing FUSE support produces an advisory warning and distro-specific guidance. Older AppImage runtimes may need FUSE 2, while newer runtimes may work with FUSE 3. Type 1 does not automatically imply a FUSE 2 requirement. `--extract` does not require FUSE to mount the original AppImage.
+
+These checks do not execute the source, install dependencies or block package creation. The current host may differ from the destination host; a detected executable/library does not prove that the relevant service or runtime is correctly configured.
