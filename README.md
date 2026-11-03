@@ -244,3 +244,9 @@ MUTATE_TIMINGS=1 mutate inspect package.deb
 ```
 
 No timing probes are enabled by default. Compare p50/p95 between two builds with the optional, standard-library-only `benchmarks/compare.py` tool (see `benchmarks/README.md`). Measurements depend on package format, compression, filesystem and library discovery; this optimization avoids unnecessary relocation I/O, **not** output compression. Runtime prerequisite checks now run only for Android APK and AppImage, and Android APKs preserved for Waydroid skip Linux ELF analysis.
+
+### Deep inspection performance and GUI-ready nonblocking inspection
+
+`mutate inspect file.deb` keeps the default, complete ELF analysis and host provider lookup. Native package-database lookups on Debian, Arch, and Alpine now resolve all external SONAMEs in a batch, limiting repeated filesystem scans. For a full ELF inspection without package-manager queries, use `mutate inspect file.deb --no-resolve`: this still extracts and scans ELF binaries and clearly marks host providers as **NOT RESOLVED**. It is useful for offline/interactive GUI workflows, not an alias for `--fast`.
+
+With `MUTATE_TIMINGS=1`, the full inspection breakdown includes `detect`, `unpack`, `elf`, `resolve`, and `cleanup`; staging cleanup was previously missing from the phase timings even though it contributes to wall-clock latency. The benchmark comparator now reports per-package p50/p95 and the median per-package change as well as the pooled result. See `benchmarks/README.md`.

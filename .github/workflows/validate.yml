@@ -32,6 +32,8 @@ jobs:
           bash -n tests/os_matrix/run_matrix.sh
           sh -n tests/os_matrix/test_in_container.sh
           sh -n tests/real_packages/test_real_packages.sh
+      - name: Verify benchmark comparison utility
+        run: python3 benchmarks/test_compare.py
       - name: Generate portable fixtures
         run: |
           tmp=$(mktemp -d)

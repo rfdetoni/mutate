@@ -34,7 +34,10 @@ func (r *ArchResolver) Resolve(soName string) (string, error) {
 		return pkg, nil
 	}
 
-	// 2. Fallback to `pacman -F <soName>`
+	return r.resolveViaPacman(soName)
+}
+
+func (r *ArchResolver) resolveViaPacman(soName string) (string, error) {
 	if path, err := exec.LookPath("pacman"); err == nil && path != "" {
 		cmd := exec.Command("pacman", "-F", "--machinereadable", soName)
 		out, err := cmd.Output()
@@ -103,4 +106,66 @@ func (r *ArchResolver) searchPacmanLocal(soName string) (string, error) {
 		return name, nil
 	}
 	return "", ErrNotFound
+}
+
+// ResolveMany looks up only requested SONAMEs and stops scanning as soon
+// as all providers are found, instead of indexing all installed libraries.
+func (r *ArchResolver) ResolveMany(libs []string) map[string]string {
+	found := make(map[string]string, len(libs))
+	wanted := make(map[string]struct{}, len(libs))
+	for _, name := range libs {
+		if name != "" {
+			wanted[name] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 {
+		return found
+	}
+	entries, err := os.ReadDir(r.pacmanLocalDir)
+	if err == nil {
+	scan:
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			file, err := os.Open(filepath.Join(r.pacmanLocalDir, entry.Name(), "files"))
+			if err != nil {
+				continue
+			}
+			parts := strings.Split(entry.Name(), "-")
+			pkg := entry.Name()
+			if len(parts) >= 3 {
+				pkg = strings.Join(parts[:len(parts)-2], "-")
+			}
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				path := scanner.Text()
+				if !strings.Contains(path, "/") {
+					continue
+				}
+				name := filepath.Base(path)
+				if _, ok := wanted[name]; !ok {
+					continue
+				}
+				if _, ok := found[name]; ok {
+					continue
+				}
+				found[name] = pkg
+				if len(found) == len(wanted) {
+					_ = file.Close()
+					break scan
+				}
+			}
+			_ = file.Close()
+		}
+	}
+	for name := range wanted {
+		if _, ok := found[name]; ok {
+			continue
+		}
+		if pkg, err := r.resolveViaPacman(name); err == nil && pkg != "" {
+			found[name] = pkg
+		}
+	}
+	return found
 }

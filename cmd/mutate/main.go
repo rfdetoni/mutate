@@ -40,7 +40,7 @@ func main() {
 }
 
 func newInspectCmd() *cobra.Command {
-	var extract, fast, jsonOutput bool
+	var extract, fast, jsonOutput, noResolve bool
 	cmd := &cobra.Command{
 		Use:   "inspect <package-file>",
 		Short: "Inspect package metadata, ELF binaries, interpreter and dependencies",
@@ -87,7 +87,13 @@ func newInspectCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer os.RemoveAll(stage)
+			// Include workspace cleanup in profiling: the prior timings stopped
+			// before removing extracted files, even though it is on the
+			// user-visible critical path for full inspection.
+			defer func() {
+				_ = os.RemoveAll(stage)
+				timer.mark("cleanup")
+			}()
 			ir, err = unpacker.Prepare(src, format, stage, unpacker.PrepareOptions{Extract: extract})
 			if err != nil {
 				return fmt.Errorf("inspect package: %w", err)
@@ -128,16 +134,26 @@ func newInspectCmd() *cobra.Command {
 			default:
 				fmt.Fprintln(cmd.OutOrStdout(), "Pure static / None")
 			}
-			res := resolver.NewAutoResolver()
-			fmt.Fprintf(cmd.OutOrStdout(), "Host Distribution:  %s\n\n", res.HostDistro())
+			host := resolver.DetectHostDistro()
+			fmt.Fprintf(cmd.OutOrStdout(), "Host Distribution:  %s\n\n", host)
 			if len(analysis.ExternalLibraries) > 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "=== External Shared Libraries (.so) & Host Package Providers ===")
+				var providers map[string]string
+				if !noResolve {
+					// Construct the resolver only when there are libraries to
+					// look up. Local package databases support batch lookups
+					// to avoid scanning them once per SONAME.
+					if hostResolver, e := resolver.NewResolverFor(host); e == nil {
+						providers = resolver.ResolveLibraries(hostResolver, analysis.ExternalLibraries)
+					}
+				}
 				for _, lib := range analysis.ExternalLibraries {
-					provider, err := res.Resolve(lib)
-					if err != nil {
-						fmt.Fprintf(cmd.OutOrStdout(), "  • %-25s -> [NOT FOUND on host; explicit mapping or --library-dir required]\n", lib)
-					} else {
+					if noResolve {
+						fmt.Fprintf(cmd.OutOrStdout(), "  • %-25s -> [NOT RESOLVED (--no-resolve)]\n", lib)
+					} else if provider := providers[lib]; provider != "" {
 						fmt.Fprintf(cmd.OutOrStdout(), "  • %-25s -> %s\n", lib, provider)
+					} else {
+						fmt.Fprintf(cmd.OutOrStdout(), "  • %-25s -> [NOT FOUND on host; explicit mapping or --library-dir required]\n", lib)
 					}
 				}
 			}
@@ -148,6 +164,7 @@ func newInspectCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&extract, "extract", false, "Extract AppImage filesystem for deep inspection")
 	cmd.Flags().BoolVar(&fast, "fast", false, "Read package metadata without extracting its payload or analyzing ELF files")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output machine-readable JSON (runtime notices go to stderr)")
+	cmd.Flags().BoolVar(&noResolve, "no-resolve", false, "Do not query host package databases for ELF library providers")
 	return cmd
 }
 

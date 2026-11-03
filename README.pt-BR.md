@@ -247,3 +247,9 @@ MUTATE_TIMINGS=1 mutate inspect pacote.deb
 ```
 
 O modo padrão não coleta essas medições. Para comparar versões em pacotes reais usando p50/p95 e execuções alternadas, utilize `benchmarks/compare.py` (instruções em `benchmarks/README.md`). A melhoria elimina I/O desnecessário na normalização FHS; não altera compressão do pacote final. Verificações de FUSE/Waydroid agora são realizadas apenas para AppImage e APK Android, e APKs preservados não passam por análise ELF de Linux.
+
+### Desempenho da inspeção completa e preparação para interface gráfica
+
+`mutate inspect pacote.deb` mantém análise ELF completa e consulta de provedores no sistema. Debian, Arch e Alpine passam a resolver todas as bibliotecas externas em lote, evitando varreduras repetidas das bases locais. Para analisar ELF sem consultar gerenciadores de pacotes, use `mutate inspect pacote.deb --no-resolve`: os SONAMEs continuam disponíveis e os provedores são identificados como **NOT RESOLVED**. Essa opção é útil em interfaces gráficas e ambientes offline; não substitui `--fast`.
+
+`MUTATE_TIMINGS=1` passa a contabilizar também `cleanup`, pois remover os arquivos temporários faz parte do tempo real percebido pelo usuário. O comparador de benchmarks exibe p50/p95 por pacote, além do agregado, para identificar quais pacotes influenciaram a mudança de desempenho.
