@@ -123,6 +123,8 @@ func AnalyzePackage(ir *domain.PackageIR) (*PackageAnalysisResult, error) {
 			filePath = filepath.Join(ir.StagingDir, destPath)
 		}
 
+		if filePath=="" {continue} // Metadata-only entries have no local payload to scan.
+
 		// Open once: the previous flow opened every file for magic and
 		// then reopened ELF files for parsing. For many entries this doubles
 		// open/stat calls and produces unnecessary filesystem I/O.
