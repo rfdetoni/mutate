@@ -63,8 +63,23 @@ chmod 755 "$TMP/fixtures/bin/curl"
 cat > "$TMP/fixtures/bin/go" <<'EOF'
 #!/bin/sh
 case "$1" in
- version) echo "go version go1.26.4 linux/amd64" ;;
+ version)
+   # Simulate an old installed binary that reports the auto-selected
+   # go1.26.4 from the caller's go.mod, but runs 1.24.0 with local.
+   if [ "${MOCK_LOCAL_GO_OLD:-0}" = 1 ]; then
+     if [ "${GOTOOLCHAIN:-auto}" = local ]; then
+       echo "go version go1.24.0 linux/amd64"
+     else
+       echo "go version go1.26.4 linux/amd64"
+     fi
+   else
+     echo "go version go1.26.4 linux/amd64"
+   fi ;;
  build)
+   if [ "${MOCK_LOCAL_GO_OLD:-0}" = 1 ]; then
+     echo "go: go.mod requires go >= 1.26.4 (running go 1.24.0; GOTOOLCHAIN=local)" >&2
+     exit 1
+   fi
    out=
    while [ "$#" -gt 0 ]; do
      if [ "$1" = "-o" ]; then out=$2; shift 2; else shift; fi
@@ -105,6 +120,22 @@ sh "$ROOT/install.sh" > "$TMP/source.log" 2>&1 ||
   { cat "$TMP/source.log"; die "source fallback"; }
 [ "$("$MUTATE_INSTALL_DIR/mutate")" = source-binary ] || die "source content"
 [ -f "$DESKTOP_ENTRY" ] || die "source fallback did not register desktop entry"
+
+# Regression: 'go version' reports 1.26.4 because auto-select reads the
+# caller's project, while the underlying local Go is actually 1.24.0.
+# The installer must reject that local toolchain and bootstrap Go 1.26.4.
+MOCK_LOCAL_GO_OLD=1
+export MOCK_LOCAL_GO_OLD
+sh "$ROOT/install.sh" --source > "$TMP/auto-toolchain.log" 2>&1 ||
+  { cat "$TMP/auto-toolchain.log"; die "auto-selected toolchain mismatch"; }
+grep -q 'local Go 1.24.0 is older than the required 1.26.4' "$TMP/auto-toolchain.log" ||
+  die "did not detect the underlying old Go binary"
+grep -q 'temporary official Go toolchain' "$TMP/auto-toolchain.log" ||
+  die "did not bootstrap a verified compatible toolchain"
+[ "$("$MUTATE_INSTALL_DIR/mutate")" = source-binary ] ||
+  die "compatible Go build did not produce a working binary"
+MOCK_LOCAL_GO_OLD=0
+export MOCK_LOCAL_GO_OLD
 
 # Explicit opt-out should not recreate a missing entry.
 MOCK_RELEASE_MISSING=0
