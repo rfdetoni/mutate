@@ -50,12 +50,31 @@ O M.U.T.A.T.E. inspeciona cabeçalhos ELF, resolve dependências reversas por bi
 
 ## Instalação
 
-### Via Script de Instalação
-```bash
-git clone https://github.com/rfdetoni/mutate.git
-cd mutate
-./install.sh
+### Instalação universal no Linux (via curl)
+
+Compatível com Debian/Ubuntu, Fedora/RHEL, Arch, Alpine (musl) e outras distribuições Linux com `sh` POSIX, `tar`, `curl` ou `wget` e uma arquitetura Go suportada.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh
 ```
+
+Sem precisar clonar o repositório nem executar o script como root. A instalação padrão usa `~/.local/bin` para usuários comuns e `/usr/local/bin` quando já houver permissão. O script identifica a arquitetura, prioriza o binário de release (com SHA-256 validado) e, se ele ainda não existir, baixa o código-fonte e compila. Se não houver Go compatível instalado, baixa um **toolchain Go temporário oficial com verificação SHA-256**; não altera o Go do sistema. A compilação precisa de acesso à rede para baixar módulos.
+
+```sh
+# Instalação global (necessita permissões ou sudo sem prompt)
+curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --system
+
+# Forçar compilação de código-fonte
+curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --source
+
+# Escolher diretório personalizado
+curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --dir "$HOME/bin"
+
+# Exigir binário de uma release específica
+curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --release --version v1.0.0
+```
+
+Também funciona com `wget -qO- https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh`. **Não execute `curl | sudo sh`**: o script deve rodar como usuário normal e só requer privilégios para a cópia final quando solicitada. Enquanto não existir uma release binária, o modo padrão compila a partir da fonte. Confira o script antes de executá-lo em ambientes sensíveis.
 
 ### Compilando a partir do Código Fonte (Go 1.24+)
 ```bash
