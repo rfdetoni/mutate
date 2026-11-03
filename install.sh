@@ -9,7 +9,8 @@ METHOD=${MUTATE_INSTALL_METHOD:-auto}
 VERSION=${MUTATE_VERSION:-latest}
 REF=${MUTATE_REF:-main}
 DEST=${MUTATE_INSTALL_DIR:-}
-REGISTER_DESKTOP=${MUTATE_INSTALL_DESKTOP:-0}
+REGISTER_DESKTOP=${MUTATE_INSTALL_DESKTOP:-1}
+DESKTOP_SCOPE=auto
 RELEASES=${MUTATE_RELEASE_BASE_URL:-https://github.com/$REPO/releases}
 SOURCE_URL=${MUTATE_SOURCE_URL:-https://codeload.github.com/$REPO/tar.gz/refs/heads/$REF}
 
@@ -20,26 +21,28 @@ die() { printf '%s\n' "ERROR: $*" >&2; exit 1; }
 usage() {
     cat <<'EOF'
 M.U.T.A.T.E. installer (Linux, POSIX sh)
-Usage: sh install.sh [--user | --system | --dir PATH] [--source | --release] [--version TAG] [--desktop]
-  --user          Install to ~/.local/bin (default for unprivileged users)
-  --system        Install to /usr/local/bin (needs write permission or passwordless sudo)
+Usage: sh install.sh [--user | --system | --dir PATH] [--source | --release] [--version TAG] [--no-desktop]
+  --user          Install to ~/.local/bin and register for the current user
+  --system        Install to /usr/local/bin and register for all users
   --dir PATH      Install to a custom directory
   --source        Build from official source archive; bootstrap Go if necessary
   --release       Require a checksum-verified prebuilt GitHub release
   --version TAG   Select a release tag (default: latest)
-  --desktop       Register a user-level GUI launcher in the Linux application menu
+  --desktop       Explicitly register the GUI launcher (already enabled by default)
+  --no-desktop    Do not register a Linux application-menu launcher
   --help          Show help
-Environment: MUTATE_INSTALL_DIR, MUTATE_INSTALL_METHOD, MUTATE_VERSION, MUTATE_REF, MUTATE_INSTALL_DESKTOP
+Environment: MUTATE_INSTALL_DIR, MUTATE_INSTALL_METHOD, MUTATE_VERSION, MUTATE_REF, MUTATE_INSTALL_DESKTOP (1 by default; 0 disables)
 EOF
 }
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --user) [ -n "${HOME:-}" ] || die "HOME is not set"; DEST="$HOME/.local/bin" ;;
-        --system) DEST="/usr/local/bin" ;;
-        --dir) [ "$#" -ge 2 ] || die "--dir needs a path"; DEST=$2; shift ;;
+        --user) [ -n "${HOME:-}" ] || die "HOME is not set"; DEST="$HOME/.local/bin"; DESKTOP_SCOPE=user ;;
+        --system) DEST="/usr/local/bin"; DESKTOP_SCOPE=system ;;
+        --dir) [ "$#" -ge 2 ] || die "--dir needs a path"; DEST=$2; DESKTOP_SCOPE=auto; shift ;;
         --source) METHOD=source ;;
         --desktop) REGISTER_DESKTOP=1 ;;
+        --no-desktop) REGISTER_DESKTOP=0 ;;
         --release) METHOD=release ;;
         --version) [ "$#" -ge 2 ] || die "--version needs a tag"; VERSION=$2; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -50,6 +53,7 @@ done
 
 [ "$(uname -s)" = "Linux" ] || die "this installer supports Linux only"
 case "$METHOD" in auto|release|source) ;; *) die "invalid method: $METHOD" ;; esac
+case "$REGISTER_DESKTOP" in 0|1) ;; *) die "MUTATE_INSTALL_DESKTOP must be 0 or 1" ;; esac
 case "$VERSION" in
     ""|*[!a-zA-Z0-9._-]*) die "invalid release version: $VERSION" ;;
 esac
@@ -272,15 +276,87 @@ case ":$PATH:" in
 esac
 say "Done. Run: $DEST/mutate --version"
 
-# Desktop integration is explicit and runs with the invoking user's identity.
-# A system install may use sudo for the binary, but the .desktop file is
-# always written under the user's own ~/.local/share/applications.
-if [ "$REGISTER_DESKTOP" = 1 ]; then
-    if [ "$(id -u)" -eq 0 ]; then
-        warn "skip GUI shortcut for root; run '$DEST/mutate gui --register' as your desktop user"
-    elif "$DEST/mutate" gui --register; then
-        say "GUI shortcut registered in your application menu"
+# Register a menu entry for every successful installation by default.
+# User installs write into XDG_DATA_HOME; system installs use /usr/local/share.
+# Registration never executes the installed binary or fetches any assets.
+register_desktop() {
+    binary="$DEST/mutate"
+    # Desktop Entry Exec quoting protects spaces. Reject characters requiring
+    # additional escaping so custom paths cannot inject desktop commands.
+    case "$binary" in
+        *[!a-zA-Z0-9_./+@:\ -]*)
+            warn "cannot safely represent $binary in a desktop launcher"
+            return 1 ;;
+    esac
+
+    scope=$DESKTOP_SCOPE
+    if [ "$scope" = auto ]; then
+        case "$DEST" in
+            /usr/local/bin|/usr/bin) scope=system ;;
+            *)
+                if [ -n "${HOME:-}" ]; then
+                    case "$DEST" in
+                        "$HOME"/*) scope=user ;;
+                    esac
+                fi
+                if [ "$scope" = auto ]; then
+                    if [ "$(id -u)" -eq 0 ]; then scope=system; else scope=user; fi
+                fi ;;
+        esac
+    fi
+
+    if [ "$scope" = system ]; then
+        applications=/usr/local/share/applications
     else
-        warn "could not register desktop shortcut; run '$DEST/mutate gui --register' manually"
+        [ -n "${HOME:-}" ] || { warn "HOME is not set; cannot register a user launcher"; return 1; }
+        data_home=${XDG_DATA_HOME:-"$HOME/.local/share"}
+        case "$data_home" in
+            /*) ;;
+            *) data_home="$HOME/.local/share" ;;
+        esac
+        applications="$data_home/applications"
+    fi
+
+    cat > "$WORK/mutate.desktop" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=M.U.T.A.T.E.
+Comment=Conversor e instalador de pacotes Linux
+Exec="$binary" gui
+Icon=package-x-generic
+Terminal=false
+Categories=Utility;System;
+StartupNotify=true
+EOF
+
+    temp_entry="$applications/.mutate-$$.desktop"
+    desktop_priv=
+    if [ "$scope" = system ] && [ "$(id -u)" -ne 0 ] &&
+       { [ ! -d "$applications" ] || [ ! -w "$applications" ]; }; then
+        if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+            desktop_priv=sudo
+        else
+            warn "system application menu is not writable; install with administrator permissions"
+            return 1
+        fi
+    fi
+    if [ -n "$desktop_priv" ]; then
+        "$desktop_priv" mkdir -p "$applications" || return 1
+        "$desktop_priv" cp "$WORK/mutate.desktop" "$temp_entry" || return 1
+        "$desktop_priv" chmod 0644 "$temp_entry" || return 1
+        "$desktop_priv" mv -f "$temp_entry" "$applications/mutate.desktop" || return 1
+    else
+        mkdir -p "$applications" || return 1
+        cp "$WORK/mutate.desktop" "$temp_entry" || return 1
+        chmod 0644 "$temp_entry" || return 1
+        mv -f "$temp_entry" "$applications/mutate.desktop" || return 1
+    fi
+    say "Application menu: $applications/mutate.desktop"
+}
+
+if [ "$REGISTER_DESKTOP" = 1 ]; then
+    if ! register_desktop; then
+        warn "binary installed, but the application-menu shortcut could not be registered"
     fi
 fi

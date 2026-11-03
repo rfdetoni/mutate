@@ -81,6 +81,8 @@ export MOCK_RELEASE_MISSING=0
 export MUTATE_RELEASE_BASE_URL="https://release.test"
 export MUTATE_SOURCE_URL="https://source.test"
 export HOME="$TMP/home"
+export XDG_DATA_HOME="$HOME/.local/share"
+unset MUTATE_INSTALL_DESKTOP
 export PATH="$TMP/fixtures/bin:/usr/bin:/bin"
 export MUTATE_INSTALL_DIR="$TMP/home/.local/bin"
 
@@ -90,12 +92,32 @@ sh "$ROOT/install.sh" --release > "$TMP/release.log" 2>&1 ||
   { cat "$TMP/release.log"; die "release install"; }
 [ "$("$MUTATE_INSTALL_DIR/mutate")" = release-binary ] || die "release content"
 [ -L "$MUTATE_INSTALL_DIR/mut" ] || die "missing mut symlink"
+DESKTOP_ENTRY="$XDG_DATA_HOME/applications/mutate.desktop"
+[ -f "$DESKTOP_ENTRY" ] || die "desktop shortcut not registered by default"
+grep -Fq "Exec=\"$MUTATE_INSTALL_DIR/mutate\" gui" "$DESKTOP_ENTRY" ||
+  die "desktop launcher does not reference installed binary"
+grep -q '^Terminal=false$' "$DESKTOP_ENTRY" ||
+  die "desktop launcher should not open a terminal"
 
 MOCK_RELEASE_MISSING=1
 export MOCK_RELEASE_MISSING
 sh "$ROOT/install.sh" > "$TMP/source.log" 2>&1 ||
   { cat "$TMP/source.log"; die "source fallback"; }
 [ "$("$MUTATE_INSTALL_DIR/mutate")" = source-binary ] || die "source content"
+[ -f "$DESKTOP_ENTRY" ] || die "source fallback did not register desktop entry"
+
+# Explicit opt-out should not recreate a missing entry.
+MOCK_RELEASE_MISSING=0
+export MOCK_RELEASE_MISSING
+rm -f "$DESKTOP_ENTRY"
+sh "$ROOT/install.sh" --release --no-desktop > "$TMP/no-desktop.log" 2>&1 ||
+  { cat "$TMP/no-desktop.log"; die "desktop opt-out"; }
+[ ! -f "$DESKTOP_ENTRY" ] || die "desktop entry created despite --no-desktop"
+
+# Explicit flag must override the environment setting.
+MUTATE_INSTALL_DESKTOP=0 sh "$ROOT/install.sh" --release --desktop > "$TMP/desktop-override.log" 2>&1 ||
+  { cat "$TMP/desktop-override.log"; die "desktop override"; }
+[ -f "$DESKTOP_ENTRY" ] || die "--desktop did not override the opt-out"
 
 MOCK_RELEASE_MISSING=0
 export MOCK_RELEASE_MISSING

@@ -265,11 +265,18 @@ mutate gui --register           # add M.U.T.A.T.E. to your Linux application men
 mutate gui --no-browser         # show a private loopback URL without launching a browser
 ```
 
-For a new user install with an optional application-menu shortcut:
+A normal installation **automatically registers** M.U.T.A.T.E. in the Linux
+application menu. User installations register a launcher in
+`~/.local/share/applications` (or `XDG_DATA_HOME/applications`);
+system installations register it in `/usr/local/share/applications`.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --user --desktop
+curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --user
 ```
+
+For headless/server environments, pass `--no-desktop` or set
+`MUTATE_INSTALL_DESKTOP=0`. `mutate gui --register` remains available to
+refresh the per-user launcher manually.
 
 The GUI presents a large drag-and-drop / file-picker surface, a real metadata
 preview, full ELF inspection, native-format conversion with downloads,

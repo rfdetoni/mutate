@@ -268,11 +268,19 @@ mutate gui --register           # cadastra o atalho no menu de aplicativos Linux
 mutate gui --no-browser         # imprime a URL local sem abrir o navegador
 ```
 
-Para instalar e registrar o atalho opcionalmente:
+O instalador agora **registra automaticamente** o M.U.T.A.T.E. no menu
+de aplicativos Linux. Instalações de usuário criam o atalho em
+`~/.local/share/applications` (ou `XDG_DATA_HOME/applications`),
+e instalações de sistema usam `/usr/local/share/applications`.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --user --desktop
+curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | sh -s -- --user
 ```
+
+Em servidores sem ambiente gráfico, use `--no-desktop` ou
+`MUTATE_INSTALL_DESKTOP=0` para desativar o registro. O comando
+`mutate gui --register` continua disponível para recriar manualmente
+o atalho do usuário.
 
 A tela oferece uma área grande para arrastar o instalador ou clicar e
 selecionar, detalhes verdadeiros do pacote, análise ELF, conversão para
