@@ -12,7 +12,7 @@ git worktree add /tmp/mutate-after HEAD
 python3 benchmarks/compare.py \
   --before /tmp/mutate-before-bin --after /tmp/mutate-after-bin \
   --target deb --runs 15 --warmup 3 \
-  --operations inspect build dry-run \
+  --operations inspect build dry-run -- \
   /path/to/real-package-1.deb /path/to/real-package-2.deb
 ```
 
@@ -27,3 +27,5 @@ Run benchmarks on the same filesystem, after building both binaries with the sam
 The comparator prints p50 and p95 for every package separately and the median percentage change across packages. The historical pooled median can shift when the workload contains a mix of cheap native inspections and expensive packages with large ELF payloads or provider lookups. Examine per-package changes before interpreting the pooled p50 as a regression.
 
 Use `MUTATE_TIMINGS=1 mutate inspect package.deb` for the breakdown including cleanup. Then compare `mutate inspect package.deb --no-resolve` against the default to isolate the **host dependency resolver** from the archive extraction and ELF scan. Both paths still validate the package content; only the external provider lookup is skipped. No real-world speedup is claimed without rerunning the same ten-package corpus.
+
+**CLI note:** `--operations` accepts several values. Add `--` before positional package paths to stop option parsing and prevent package paths being interpreted as operations.

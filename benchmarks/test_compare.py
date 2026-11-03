@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory(prefix="mutate-bench-test-") as tmp:
     cmd = [
         sys.executable, str(COMPARE), "--before", str(root / "before"),
         "--after", str(root / "after"), "--runs", "3", "--warmup", "0",
-        "--operations", "inspect", "build", *map(str, packages),
+        "--operations", "inspect", "build", "--", *map(str, packages),
     ]
     completed = subprocess.run(cmd, text=True, capture_output=True, check=True)
     for expected in ("fast.deb", "slow.deb", "median package delta", "p95"):
