@@ -1,10 +1,10 @@
 name: Mutate validation
 on:
-  push:
-    branches: [feat/embedded-desktop-gui]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,15 +15,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Format Go and commit on feature branch
+      - name: Verify Go formatting
         run: |
-          gofmt -w cmd internal tests/fixtures
-          if ! git diff --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add cmd internal tests/fixtures
-            git commit -m "style: gofmt app library and GUI"
-            git push
+          unformatted=$(gofmt -l cmd internal tests/fixtures)
+          if [ -n "$unformatted" ]; then
+            printf 'Unformatted Go files:\n%s\n' "$unformatted" >&2
+            exit 1
           fi
       - name: Verify POSIX installer and offline install paths
         run: |
