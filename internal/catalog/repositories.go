@@ -440,7 +440,7 @@ func (m *RepositoryManager) searchOne(ctx context.Context, source Source, query 
 	case "aur":
 		return searchAUR(ctx, query, m.client, source.Endpoint)
 	case "arch":
-		endpoint = source.Endpoint + "?q=" + url.QueryEscape(query) + "&arch=" + url.QueryEscape(hostArch()) + "&arch=any"
+		endpoint = source.Endpoint + "?q=" + url.QueryEscape(query)
 	case "debian":
 		endpoint = source.Endpoint + url.PathEscape(query) + "/"
 	case "json":
@@ -482,7 +482,7 @@ func (m *RepositoryManager) searchOne(ctx context.Context, source Source, query 
 			return nil, err
 		}
 		for _, entry := range payload.Results {
-			if !ValidPackageName(entry.Name) {
+			if !ValidPackageName(entry.Name) || (entry.Arch != hostArch() && entry.Arch != "any") {
 				continue
 			}
 			version := entry.Version

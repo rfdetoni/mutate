@@ -167,7 +167,7 @@ func TestRepositorySearchKeepsRemoteResultsWhenNativeUnavailable(t *testing.T) {
 		case "aur.archlinux.org":
 			return `{"type":"search","results":[{"Name":"blender-git","Version":"4.5.0-1","Description":"Build"}]}`, nil
 		case "archlinux.org":
-			return `{"results":[{"pkgname":"blender","pkgver":"4.5.3","pkgrel":"2","repo":"Extra","pkgdesc":"3D tools","arch":"x86_64"}]}`, nil
+			return `{"results":[{"pkgname":"blender","pkgver":"99","pkgrel":"1","repo":"Extra","pkgdesc":"Wrong CPU","arch":"i686"},{"pkgname":"blender","pkgver":"4.5.3","pkgrel":"2","repo":"Extra","pkgdesc":"3D tools","arch":"x86_64"}]}`, nil
 		case "sources.debian.org":
 			return `{"results":{"exact":{"name":"blender"},"other":[]}}`, nil
 		}
