@@ -43,7 +43,7 @@
     <section class="workspace-view" id="workspace-view" aria-labelledby="page-title">
      <div class="workspace-heading">
       <div class="eyebrow" id="view-eyebrow">CONVERSÃO DE PACOTES</div>
-      <h1 id="page-title">Converta ou instale pacotes Linux</h1>
+      <h1 id="page-title" tabindex="-1">Converta ou instale pacotes Linux</h1>
       <p id="page-intro">Selecione um instalador, confira os detalhes e escolha o que fazer.</p>
      </div>
 
@@ -66,7 +66,7 @@
       <span class="format-chip">.tar.xz</span>
      </div>
 
-     <section class="status-panel" aria-labelledby="status-title">
+     <section class="status-panel" id="status-panel" aria-labelledby="status-title" aria-busy="false">
       <div class="status-topline">
        <div>
         <div class="section-kicker">ATIVIDADE</div>
@@ -88,14 +88,14 @@
 
     <section class="aux-view" id="history-view" aria-labelledby="history-title" hidden>
      <div class="eyebrow">SESSÃO ATUAL</div>
-     <h1 id="history-title">Histórico de operações</h1>
+     <h1 id="history-title" tabindex="-1">Histórico de operações</h1>
      <p>Atividades desta sessão. Os arquivos gerados ficam disponíveis até a interface ser encerrada.</p>
      <div id="history-list" class="history-list"></div>
     </section>
 
     <section class="aux-view" id="settings-view" aria-labelledby="settings-title" hidden>
      <div class="eyebrow">PREFERÊNCIAS LOCAIS</div>
-     <h1 id="settings-title">Configurações</h1>
+     <h1 id="settings-title" tabindex="-1">Configurações</h1>
      <p>As opções abaixo afetam apenas esta sessão e não alteram o comportamento da CLI.</p>
      <div class="settings-list">
       <label class="toggle-row" for="resolve-host">

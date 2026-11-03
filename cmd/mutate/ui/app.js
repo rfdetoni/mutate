@@ -18,6 +18,7 @@ const app = {
   requestError: '',
   polling: null,
   lastJobID: '',
+  historyRenderedSignature: '',
 };
 
 const viewCopy = {
@@ -103,13 +104,21 @@ function setView(view) {
     refreshActions();
     $('page-title').focus?.({ preventScroll: true });
   }
-  if (view === 'history') renderHistory();
+  if (view === 'history') {
+    renderHistory();
+    $('history-title').focus({ preventScroll: true });
+  }
+  if (view === 'settings') $('settings-title').focus({ preventScroll: true });
 }
 
 function refreshActions() {
   const canUse = Boolean(app.selected) && !app.busy && !app.uploading;
   for (const id of ['inspect-btn', 'convert-btn', 'install-btn']) $(id).disabled = !canUse;
   if (!app.nativeTarget) $('install-btn').disabled = true;
+  const disabledDrop = app.busy || app.uploading;
+  $('drop-zone').setAttribute('aria-disabled', disabledDrop ? 'true' : 'false');
+  $('drop-zone').tabIndex = disabledDrop ? -1 : 0;
+  $('file-input').disabled = disabledDrop;
   const isInstall = app.view === 'install';
   for (const input of document.querySelectorAll('input[name="target-format"]')) {
     input.disabled = isInstall || app.busy || app.uploading;
@@ -158,6 +167,7 @@ function renderActivity() {
   list.replaceChildren();
   const barVisible = app.uploading || app.busy && job?.state === 'running';
   $('progress-track').hidden = !barVisible;
+  $('status-panel').setAttribute('aria-busy', barVisible ? 'true' : 'false');
   const error = app.requestError || job?.state === 'error' && job.message || '';
   $('error-text').hidden = !error;
   $('error-text').textContent = error;
@@ -219,6 +229,9 @@ function renderActivity() {
 }
 
 function renderHistory() {
+  const signature = JSON.stringify(app.history);
+  if (signature === app.historyRenderedSignature) return;
+  app.historyRenderedSignature = signature;
   const container = $('history-list');
   container.replaceChildren();
   if (!app.history.length) {
@@ -256,7 +269,7 @@ function renderHistory() {
 function render() {
   renderPackage();
   renderActivity();
-  renderHistory();
+  if (app.view === 'history') renderHistory();
   refreshActions();
   text('host-label', app.host
     ? 'Sistema: ' + app.host + (app.nativeTarget ? ' · formato nativo: ' + app.nativeTarget.toUpperCase() : '')
@@ -373,11 +386,11 @@ async function runAction(action) {
 
 const zone = $('drop-zone');
 const input = $('file-input');
-zone.addEventListener('click', () => input.click());
+zone.addEventListener('click', () => { if (!input.disabled) input.click(); });
 zone.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault();
-    input.click();
+    if (!input.disabled) input.click();
   }
 });
 input.addEventListener('change', () => {

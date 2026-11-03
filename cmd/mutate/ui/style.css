@@ -97,6 +97,7 @@ button:focus-visible, a:focus-visible, .drop-zone:focus-visible, input:focus-vis
   padding: 24px 15px; transition: border-color .13s, background .13s;
 }
 .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: #f7f5fc; }
+.drop-zone[aria-disabled="true"] { background: var(--surface-muted); opacity: .68; cursor: not-allowed; border-color: var(--line-strong); }
 .drop-zone.drag-over { outline: 2px solid #d1c8ef; outline-offset: 2px; }
 .drop-icon {
   display: grid; place-items: center; width: 46px; height: 46px; border-radius: 8px;
