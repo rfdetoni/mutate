@@ -227,3 +227,9 @@ To reuse a prepared offline Go/Cargo dependency cache, optionally set `MUTATE_BU
 The expensive five-distro integration matrix is **manual**. PRs use a single Go test/formatter/installer job. Real-package tests are opt-in and require all fixture files, with mandatory failures reported correctly.
 
 To opt into the real-package integration suite, download the upstream samples first and run `RUN_REAL_PACKAGES=1 ./tests/os_matrix/run_matrix.sh --mode local`. Cross-format combinations without an explicit dependency map or sandboxed source environment are explicitly reported as **SKIP**, not **PASS**.
+
+### Package architecture and staging ownership
+
+`inspect`, `build` and `install` share a single format-handler factory and `unpacker.Prepare` policy: preserve recognized portable artifacts by default, extract AppImages only with `--extract`, and validate their metadata overrides **before** constructing destination paths and launchers. This keeps preserved and extracted AppImage identities consistent.
+
+The intermediate representation separates **source location** from **package destination**. `SourcePath` may refer to an original AppImage/APK or supplied library outside staging, and must be treated as read-only. FHS relocation uses copy-on-write for external inputs; only temporary files within the package staging directory may be moved or rewritten. Package assembly validates destination paths and IR entry consistency at a single boundary, independently of the source format.

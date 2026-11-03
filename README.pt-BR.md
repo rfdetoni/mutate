@@ -230,3 +230,9 @@ Opcionalmente `MUTATE_BUILD_CACHE_DIR=/caminho/cache` monta cache offline `go-mo
 A matriz de cinco distribuições roda **sob demanda**, reduzindo o custo do GitHub Actions. Os PRs usam um job rápido. Testes de pacotes reais são opt-in e falhas obrigatórias deixam de ser ignoradas.
 
 Para testar os pacotes reais sob demanda, baixe primeiro as amostras e execute `RUN_REAL_PACKAGES=1 ./tests/os_matrix/run_matrix.sh --mode local`. Conversões que exigem mapeamento explícito de dependências ou ambiente de compilação isolado são registradas como **SKIP**, não **PASS**.
+
+### Arquitetura e proteção dos arquivos originais
+
+Os comandos `inspect`, `build` e `install` usam a mesma seleção de formato e a política `unpacker.Prepare`: preservam artefatos portáteis por padrão e aplicam `--extract` somente a AppImages. Nome e versão são validados **antes** de gerar caminhos e atalhos, tanto para AppImages preservados quanto extraídos.
+
+O `PackageIR` separa `SourcePath` (origem) de `DestinationPath` (destino no pacote). Um arquivo original externo ao staging nunca deve ser movido ou alterado pela normalização FHS. Quando precisa de relocação ou alteração de configuração, o M.U.T.A.T.E. usa **copy-on-write** e modifica exclusivamente a cópia temporária. A geração do pacote valida caminhos e consistência de todas as entradas, independentemente do formato de origem.

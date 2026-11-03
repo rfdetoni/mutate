@@ -100,39 +100,10 @@ func prepareConversionWithOptions(src, target string, allowSourceBuild bool, opt
 	}
 	cleanup := func() { _ = os.RemoveAll(stage) }
 	fail := func(err error) (*domain.PackageIR, func(), error) { cleanup(); return nil, nil, err }
-	u, err := getUnpackerForFormat(format)
-	if err != nil {
-		return fail(err)
-	}
-	if (opts.PackageName != "" || opts.PackageVersion != "") && format != domain.FormatAppImage {
-		return fail(fmt.Errorf("--package-name and --package-version only apply to AppImage"))
-	}
-	if opts.Extract && format != domain.FormatAppImage {
-		return fail(fmt.Errorf("--extract is only applicable to AppImage; other formats use their normal conversion path"))
-	}
-	var ir *domain.PackageIR
-	if !opts.Extract {
-		if app, ok := u.(*unpacker.AppImageUnpacker); ok {
-			ir, err = app.PreserveWithMetadata(src, stage, opts.PackageName, opts.PackageVersion)
-		} else if preserver, ok := u.(unpacker.PortablePreserver); ok {
-			ir, err = preserver.Preserve(src, stage)
-		} else {
-			ir, err = u.Unpack(src, stage)
-		}
-	} else {
-		ir, err = u.Unpack(src, stage)
-	}
-	if err != nil {
-		return fail(fmt.Errorf("prepare package: %w", err))
-	}
-	if format == domain.FormatAppImage && opts.Extract {
-		if opts.PackageName != "" {
-			ir.Metadata.Name = opts.PackageName
-		}
-		if opts.PackageVersion != "" {
-			ir.Metadata.Version = opts.PackageVersion
-		}
-	}
+	ir,err:=unpacker.Prepare(src,format,stage,unpacker.PrepareOptions{
+        Extract:opts.Extract,PackageName:opts.PackageName,PackageVersion:opts.PackageVersion,
+    })
+    if err!=nil{return fail(fmt.Errorf("prepare package: %w",err))}
 	if ir.Metadata.Name == "" || strings.ContainsAny(ir.Metadata.Name, "/\\\x00\n\r\t\"' ;$`") || ir.Metadata.Name == "." || ir.Metadata.Name == ".." {
 		return fail(fmt.Errorf("invalid package name %q", ir.Metadata.Name))
 	}
@@ -140,7 +111,7 @@ func prepareConversionWithOptions(src, target string, allowSourceBuild bool, opt
 		if !allowSourceBuild {
 			return fail(fmt.Errorf("source compilation requires --allow-source-build and bubblewrap"))
 		}
-		if err := u.(*unpacker.SourceUnpacker).BuildSource(ir); err != nil {
+		if err := unpacker.NewSourceUnpacker().BuildSource(ir); err != nil {
 			return fail(fmt.Errorf("sandboxed source build: %w", err))
 		}
 	}

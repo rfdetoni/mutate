@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -132,20 +131,18 @@ func extractAppImageFS(src, fsDir string) error {
 }
 
 func (u *AppImageUnpacker) Unpack(src, stage string) (*domain.PackageIR, error) {
-	fsDir := filepath.Join(stage, "appdir")
+ return u.UnpackWithMetadata(src,stage,"","")
+}
+
+func (u *AppImageUnpacker) UnpackWithMetadata(src,stage,customName,customVersion string)(*domain.PackageIR,error) {
+ base,version,err:=appImageIdentityWithOverrides(src,customName,customVersion)
+ if err!=nil{return nil,err}
+ fsDir := filepath.Join(stage,"appdir")
 	if err := os.MkdirAll(fsDir, 0700); err != nil {
 		return nil, err
 	}
 	if err := extractAppImageFS(src, fsDir); err != nil {
 		return nil, err
-	}
-	base := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
-	base = strings.ToLower(regexp.MustCompile(`[^a-zA-Z0-9+.-]`).ReplaceAllString(base, "-"))
-	if base == "" || base == "." || base == ".." {
-		return nil, fmt.Errorf("invalid AppImage name")
-	}
-	if len(base) > 64 {
-		base = base[:64]
 	}
 	appRun := filepath.Join(fsDir, "AppRun")
 	st, err := os.Lstat(appRun)
@@ -172,7 +169,7 @@ func (u *AppImageUnpacker) Unpack(src, stage string) (*domain.PackageIR, error) 
 	}
 	ef.Close()
 	ir.Metadata.Name = base
-	ir.Metadata.Version = "1.0.0"
+	ir.Metadata.Version = version
 	ir.Metadata.Release = "1"
 	ir.Metadata.Description = "Repackaged AppImage (runtime compatibility not guaranteed)"
 	ir.Metadata.License = "Unknown"

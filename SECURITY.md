@@ -47,3 +47,9 @@ The runtime preflight reports whether Waydroid is available on PATH or whether c
 - External AppImage extraction by `bsdtar`/`unsquashfs` is not completely constrained by the internal Go budget; use low-privilege accounts and filesystem quotas.
 - `MUTATE_BUILD_CACHE_DIR` is opt-in and read-only inside Bubblewrap; only designate caches with nonsensitive, prevalidated content.
 - Android package identities now use the full package name to prevent collisions.
+
+## Staging ownership and package representation
+
+- `SourcePath` can point to an immutable original outside the private staging directory. FHS relocation and configuration rewriting only mutate staging-owned files. External files are copied on demand before any change.
+- The package builder checks intermediate representation destinations and entry consistency before passing them to the native packager.
+- These checks do not sandbox an installed application's runtime, and they do not replace safe handling of untrusted source archives.
