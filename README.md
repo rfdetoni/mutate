@@ -258,8 +258,12 @@ When available, an **optional Wails v3 native window** (`mutate-gui`) is
 installed alongside it and used by default, with **no Chrome requirement**.
 Wails uses GTK4/WebKitGTK 6.0 (or legacy GTK3/WebKitGTK 4.1 on compatible
 systems). HTML/CSS/JS remain embedded in the main `mutate` binary.
-If native build dependencies are missing, the CLI still works and the
-existing browser fallback is used with a warning.
+During source installation, the installer **automatically installs missing
+GTK/WebKit development packages** using APT, DNF, pacman or zypper. It prints
+the action and requests sudo authorization only if system changes are needed.
+If elevation or a supported package set is unavailable, the CLI still works
+and the browser fallback remains usable. On Arch, it never performs an unsafe
+partial `pacman -Sy` upgrade.
 
 ```sh
 mutate gui                      # native Wails window when the GTK desktop shell is installed
@@ -278,8 +282,12 @@ curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | s
 ```
 
 For headless/server environments, pass `--no-desktop` or set
-`MUTATE_INSTALL_DESKTOP=0`. `mutate gui --register` remains available to
-refresh the per-user launcher manually.
+`MUTATE_INSTALL_DESKTOP=0`. To avoid automatic installation of GTK/WebKit
+packages, also pass `--no-gui-deps` or set `MUTATE_INSTALL_GUI_DEPS=0`.
+The explicit `--gui-deps` flag re-enables it for that run.
+`mutate gui --register` remains available to refresh the per-user launcher
+manually. Package manager operations do not run when all required native
+libraries and tools are already installed.
 
 The GUI presents a large drag-and-drop / file-picker surface, a real metadata
 preview, full ELF inspection, native-format conversion with downloads,

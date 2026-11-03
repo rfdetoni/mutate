@@ -10,6 +10,7 @@ VERSION=${MUTATE_VERSION:-latest}
 REF=${MUTATE_REF:-main}
 DEST=${MUTATE_INSTALL_DIR:-}
 REGISTER_DESKTOP=${MUTATE_INSTALL_DESKTOP:-1}
+INSTALL_GUI_DEPS=${MUTATE_INSTALL_GUI_DEPS:-1}
 DESKTOP_SCOPE=auto
 RELEASES=${MUTATE_RELEASE_BASE_URL:-https://github.com/$REPO/releases}
 SOURCE_URL=${MUTATE_SOURCE_URL:-https://codeload.github.com/$REPO/tar.gz/refs/heads/$REF}
@@ -22,7 +23,7 @@ die() { printf '%s\n' "ERROR: $*" >&2; exit 1; }
 usage() {
     cat <<'EOF'
 M.U.T.A.T.E. installer (Linux, POSIX sh)
-Usage: sh install.sh [--user | --system | --dir PATH] [--source | --release] [--version TAG] [--no-desktop]
+Usage: sh install.sh [--user | --system | --dir PATH] [--source | --release] [--version TAG] [--no-desktop] [--no-gui-deps]
   --user          Install to ~/.local/bin and register for the current user
   --system        Install to /usr/local/bin and register for all users
   --dir PATH      Install to a custom directory
@@ -31,8 +32,10 @@ Usage: sh install.sh [--user | --system | --dir PATH] [--source | --release] [--
   --version TAG   Select a release tag (default: latest)
   --desktop       Explicitly register the GUI launcher (already enabled by default)
   --no-desktop    Do not register a Linux application-menu launcher
+  --no-gui-deps   Do not install missing Wails/GTK system dependencies
+  --gui-deps      Install missing Wails/GTK dependencies (default)
   --help          Show help
-Environment: MUTATE_INSTALL_DIR, MUTATE_INSTALL_METHOD, MUTATE_VERSION, MUTATE_REF, MUTATE_INSTALL_DESKTOP (1 by default; 0 disables)
+Environment: MUTATE_INSTALL_DIR, MUTATE_INSTALL_METHOD, MUTATE_VERSION, MUTATE_REF, MUTATE_INSTALL_DESKTOP (1 by default; 0 disables), MUTATE_INSTALL_GUI_DEPS (1 by default; 0 disables)
 EOF
 }
 
@@ -44,6 +47,8 @@ while [ "$#" -gt 0 ]; do
         --source) METHOD=source ;;
         --desktop) REGISTER_DESKTOP=1 ;;
         --no-desktop) REGISTER_DESKTOP=0 ;;
+        --no-gui-deps) INSTALL_GUI_DEPS=0 ;;
+        --gui-deps) INSTALL_GUI_DEPS=1 ;;
         --release) METHOD=release ;;
         --version) [ "$#" -ge 2 ] || die "--version needs a tag"; VERSION=$2; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -55,6 +60,7 @@ done
 [ "$(uname -s)" = "Linux" ] || die "this installer supports Linux only"
 case "$METHOD" in auto|release|source) ;; *) die "invalid method: $METHOD" ;; esac
 case "$REGISTER_DESKTOP" in 0|1) ;; *) die "MUTATE_INSTALL_DESKTOP must be 0 or 1" ;; esac
+case "$INSTALL_GUI_DEPS" in 0|1) ;; *) die "MUTATE_INSTALL_GUI_DEPS must be 0 or 1" ;; esac
 case "$VERSION" in
     ""|*[!a-zA-Z0-9._-]*) die "invalid release version: $VERSION" ;;
 esac
@@ -192,12 +198,101 @@ bootstrap_go() {
     [ -x "$GO_BIN" ] || die "downloaded Go toolchain is not executable"
 }
 
+# Detect a complete native build environment. Keep the CLI independent
+# from GTK, WebKit and CGO whether or not this succeeds.
+have_native_gui_deps() {
+    command -v gcc >/dev/null 2>&1 || return 1
+    command -v pkg-config >/dev/null 2>&1 || return 1
+    pkg-config --exists gtk4 webkitgtk-6.0 2>/dev/null ||
+        pkg-config --exists gtk+-3.0 webkit2gtk-4.1 2>/dev/null
+}
+
+# The script may be piped to 'sh', so stdin is not a password prompt.
+# sudo reads from /dev/tty only if stderr is attached to a terminal.
+# In CI/headless sessions without cached sudo credentials, never hang.
+gui_root() {
+    if [ "$(id -u)" -eq 0 ]; then "$@"; return $?; fi
+    if ! command -v sudo >/dev/null 2>&1; then
+        warn "sudo is unavailable; cannot install graphical dependencies"
+        return 1
+    fi
+    if sudo -n true 2>/dev/null; then
+        sudo "$@"
+    elif [ -t 2 ]; then
+        say "Administrator authorization is required to install GTK/WebKit dependencies."
+        sudo "$@"
+    else
+        warn "no interactive terminal or pre-authorized sudo; skipping GUI dependencies"
+        return 1
+    fi
+}
+
+# The Wails v3 default is GTK4/WebKitGTK 6.0. On older Debian/Ubuntu
+# distributions, choose the supported GTK3/WebKit2GTK 4.1 build instead.
+# Package names here are fixed allowlisted strings, never downloaded scripts.
+apt_gui_packages() {
+    if apt-cache show libwebkitgtk-6.0-dev >/dev/null 2>&1; then
+        GUI_PACKAGES="build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev"
+    elif apt-cache show libwebkit2gtk-4.1-dev >/dev/null 2>&1; then
+        GUI_PACKAGES="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev"
+    else
+        say "Refreshing APT package metadata to locate the compatible WebKitGTK version..."
+        gui_root apt-get update -qq || return 1
+        if apt-cache show libwebkitgtk-6.0-dev >/dev/null 2>&1; then
+            GUI_PACKAGES="build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev"
+        elif apt-cache show libwebkit2gtk-4.1-dev >/dev/null 2>&1; then
+            GUI_PACKAGES="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev"
+        else
+            warn "neither supported WebKitGTK development package is available in APT"
+            return 1
+        fi
+    fi
+    # Shell splitting is intentional: GUI_PACKAGES contains only literals
+    # assigned directly above, no user-controlled input or shell expansion.
+    # shellcheck disable=SC2086
+    gui_root apt-get install -y --no-install-recommends $GUI_PACKAGES
+}
+
+install_gui_build_deps() {
+    [ "$INSTALL_GUI_DEPS" = 1 ] || {
+        warn "automatic native GUI dependencies disabled (--no-gui-deps)"
+        return 1
+    }
+    if command -v apt-get >/dev/null 2>&1 && command -v apt-cache >/dev/null 2>&1; then
+        say "Installing missing Wails/GTK dependencies with APT..."
+        apt_gui_packages || return 1
+    elif command -v dnf5 >/dev/null 2>&1; then
+        say "Installing missing Wails/GTK dependencies with DNF..."
+        gui_root dnf5 install -y gcc pkg-config gtk4-devel webkitgtk6.0-devel || return 1
+    elif command -v dnf >/dev/null 2>&1; then
+        say "Installing missing Wails/GTK dependencies with DNF..."
+        gui_root dnf install -y gcc pkg-config gtk4-devel webkitgtk6.0-devel || return 1
+    elif command -v pacman >/dev/null 2>&1; then
+        say "Installing missing Wails/GTK dependencies with pacman..."
+        # Do not run pacman -Sy: a partial Arch upgrade can break the host.
+        gui_root pacman -S --needed --noconfirm base-devel pkgconf gtk4 webkitgtk-6.0 || return 1
+    elif command -v zypper >/dev/null 2>&1; then
+        say "Installing missing Wails/GTK dependencies with zypper..."
+        gui_root zypper --non-interactive install gcc pkg-config gtk4-devel webkitgtk6_0-devel || return 1
+    else
+        warn "no supported package manager found for automatic GTK/WebKit installation"
+        return 1
+    fi
+    if ! have_native_gui_deps; then
+        warn "GTK/WebKit packages were installed, but pkg-config still cannot find a compatible GUI stack"
+        return 1
+    fi
+    return 0
+}
+
 build_desktop_shell() {
     [ -f "$SRC/desktop/go.mod" ] || return 0
     [ "$ARCH" != unknown ] || return 0
-    if ! command -v pkg-config >/dev/null 2>&1 || ! command -v gcc >/dev/null 2>&1; then
-        warn "native Wails GUI requires gcc and pkg-config; CLI still works"
-        return 0
+    if ! have_native_gui_deps; then
+        if ! install_gui_build_deps; then
+            warn "native GUI build dependencies unavailable; keeping CLI and browser fallback"
+            return 0
+        fi
     fi
     gui_tags=
     if pkg-config --exists gtk4 webkitgtk-6.0 2>/dev/null; then
@@ -205,7 +300,7 @@ build_desktop_shell() {
     elif pkg-config --exists gtk+-3.0 webkit2gtk-4.1 2>/dev/null; then
         gui_tags="-tags=gtk3"
     else
-        warn "native GUI requires GTK4/WebKitGTK 6.0 (or GTK3/WebKitGTK 4.1); using browser fallback"
+        warn "GTK/WebKit not available after dependency check; using browser fallback"
         return 0
     fi
     say "Building native Wails desktop window..."

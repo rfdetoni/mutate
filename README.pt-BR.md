@@ -259,8 +259,11 @@ O modo padrão não coleta essas medições. Para comparar versões em pacotes r
 O executável CLI Go continua compilado **sem CGO**. Quando GTK/WebKit está
 disponível, o instalador também compila `mutate-gui`, uma janela **Wails
 v3 nativa**, sem precisar de Chrome/Chromium. A interface HTML/CSS/JS
-continua embutida no motor. Se as bibliotecas da GUI estiverem ausentes,
-a CLI funciona normalmente e o navegador fica como alternativa.
+continua embutida no motor. Durante a compilação do código-fonte, o
+instalador verifica e **instala automaticamente as bibliotecas GTK/WebKit
+ausentes** com APT, DNF, pacman ou zypper, solicitando autorização sudo
+somente quando necessária. Se não conseguir, a CLI continua funcionando,
+e o navegador fica como alternativa.
 
 ```sh
 mutate gui                      # abre janela Wails quando instalada
@@ -279,9 +282,14 @@ curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | s
 ```
 
 Em servidores sem ambiente gráfico, use `--no-desktop` ou
-`MUTATE_INSTALL_DESKTOP=0` para desativar o registro. O comando
-`mutate gui --register` continua disponível para recriar manualmente
-o atalho do usuário.
+`MUTATE_INSTALL_DESKTOP=0` para desativar o registro. Para também
+**não instalar dependências gráficas**, use `--no-gui-deps` ou
+`MUTATE_INSTALL_GUI_DEPS=0`. A opção `--gui-deps` força a tentativa
+de instalação quando necessário. O instalador usa GTK4/WebKitGTK 6.0
+quando disponível, ou GTK3/WebKit2GTK 4.1 nas distribuições compatíveis.
+Não executa atualização parcial de pacotes no Arch.
+O comando `mutate gui --register` continua disponível para recriar
+manualmente o atalho do usuário.
 
 A tela oferece uma área grande para arrastar o instalador ou clicar e
 selecionar, detalhes verdadeiros do pacote, análise ELF, conversão para
