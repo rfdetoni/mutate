@@ -48,6 +48,9 @@ files and expose an actionable error without fake success. All file
 references are identified by opaque IDs, never by arbitrary API paths.
 
 ## Canonical UI ownership
+Desktop scroll ownership: the app frame fits the viewport (including margins);
+sidebar, main and inspector scroll only for overflowing content. At widths up
+to 900px, stacked views return to natural document scrolling.
 Navigation: `app.js` / `.nav-item`; form/radio: native HTML inputs;
 dialog: native `<dialog>`; status notification: single `#toast` live
 region; application scrollbar baseline: `style.css`; activity/error:

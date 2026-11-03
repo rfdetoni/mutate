@@ -337,4 +337,14 @@ func TestGUIApprovedIconDecodesFully(t *testing.T) {
 	if bounds.Dx() != 64 || bounds.Dy() != 64 {
 		t.Fatalf("unexpected icon dimensions %s", bounds)
 	}
+	for _, corner := range [][2]int{{0, 0}, {63, 0}, {0, 63}, {63, 63}} {
+		_, _, _, alpha := image.At(corner[0], corner[1]).RGBA()
+		if alpha != 0 {
+			t.Fatalf("icon background is opaque at %v (alpha=%d)", corner, alpha)
+		}
+	}
+	_, _, _, centerAlpha := image.At(32, 32).RGBA()
+	if centerAlpha == 0 {
+		t.Fatal("icon artwork is unexpectedly transparent at center")
+	}
 }
