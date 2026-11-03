@@ -290,7 +290,7 @@ func (m *RepositoryManager) updateStatus(id, status, message string, apps []App,
 	defer m.mu.Unlock()
 	for i := range m.sources {
 		if m.sources[i].ID != id || !m.sources[i].Enabled {
-			return
+			continue
 		}
 		m.sources[i].Status = status
 		m.sources[i].Error = message
