@@ -100,10 +100,12 @@ func prepareConversionWithOptions(src, target string, allowSourceBuild bool, opt
 	}
 	cleanup := func() { _ = os.RemoveAll(stage) }
 	fail := func(err error) (*domain.PackageIR, func(), error) { cleanup(); return nil, nil, err }
-	ir,err:=unpacker.Prepare(src,format,stage,unpacker.PrepareOptions{
-        Extract:opts.Extract,PackageName:opts.PackageName,PackageVersion:opts.PackageVersion,
-    })
-    if err!=nil{return fail(fmt.Errorf("prepare package: %w",err))}
+	ir, err := unpacker.Prepare(src, format, stage, unpacker.PrepareOptions{
+		Extract: opts.Extract, PackageName: opts.PackageName, PackageVersion: opts.PackageVersion,
+	})
+	if err != nil {
+		return fail(fmt.Errorf("prepare package: %w", err))
+	}
 	if ir.Metadata.Name == "" || strings.ContainsAny(ir.Metadata.Name, "/\\\x00\n\r\t\"' ;$`") || ir.Metadata.Name == "." || ir.Metadata.Name == ".." {
 		return fail(fmt.Errorf("invalid package name %q", ir.Metadata.Name))
 	}

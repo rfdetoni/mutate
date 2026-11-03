@@ -85,7 +85,7 @@ func newInspectCmd() *cobra.Command {
 				return err
 			}
 			defer os.RemoveAll(stage)
-			ir,err=unpacker.Prepare(src,format,stage,unpacker.PrepareOptions{Extract:extract})
+			ir, err = unpacker.Prepare(src, format, stage, unpacker.PrepareOptions{Extract: extract})
 			if err != nil {
 				return fmt.Errorf("inspect package: %w", err)
 			}

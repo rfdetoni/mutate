@@ -131,13 +131,15 @@ func extractAppImageFS(src, fsDir string) error {
 }
 
 func (u *AppImageUnpacker) Unpack(src, stage string) (*domain.PackageIR, error) {
- return u.UnpackWithMetadata(src,stage,"","")
+	return u.UnpackWithMetadata(src, stage, "", "")
 }
 
-func (u *AppImageUnpacker) UnpackWithMetadata(src,stage,customName,customVersion string)(*domain.PackageIR,error) {
- base,version,err:=appImageIdentityWithOverrides(src,customName,customVersion)
- if err!=nil{return nil,err}
- fsDir := filepath.Join(stage,"appdir")
+func (u *AppImageUnpacker) UnpackWithMetadata(src, stage, customName, customVersion string) (*domain.PackageIR, error) {
+	base, version, err := appImageIdentityWithOverrides(src, customName, customVersion)
+	if err != nil {
+		return nil, err
+	}
+	fsDir := filepath.Join(stage, "appdir")
 	if err := os.MkdirAll(fsDir, 0700); err != nil {
 		return nil, err
 	}

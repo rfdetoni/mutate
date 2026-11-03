@@ -49,22 +49,24 @@ func appImageIdentity(src string) (string, string, error) {
 }
 
 // appImageIdentityWithOverrides validates names before files are created.
-func appImageIdentityWithOverrides(src,customName,customVersion string)(string,string,error){
- name,version,err:=appImageIdentity(src)
- if err!=nil{return "","",err}
- if customName!="" {
-  if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9+.-]{0,63}$`).MatchString(customName){
-   return "","",fmt.Errorf("invalid package name %q",customName)
-  }
-  name=strings.ToLower(customName)
- }
- if customVersion!=""{
-  if !regexp.MustCompile(`^[0-9][0-9A-Za-z.+~:-]*$`).MatchString(customVersion){
-   return "","",fmt.Errorf("invalid package version %q",customVersion)
-  }
-  version=customVersion
- }
- return name,version,nil
+func appImageIdentityWithOverrides(src, customName, customVersion string) (string, string, error) {
+	name, version, err := appImageIdentity(src)
+	if err != nil {
+		return "", "", err
+	}
+	if customName != "" {
+		if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9+.-]{0,63}$`).MatchString(customName) {
+			return "", "", fmt.Errorf("invalid package name %q", customName)
+		}
+		name = strings.ToLower(customName)
+	}
+	if customVersion != "" {
+		if !regexp.MustCompile(`^[0-9][0-9A-Za-z.+~:-]*$`).MatchString(customVersion) {
+			return "", "", fmt.Errorf("invalid package version %q", customVersion)
+		}
+		version = customVersion
+	}
+	return name, version, nil
 }
 
 // Preserve stores only the original AppImage and a freedesktop launcher.
@@ -89,8 +91,10 @@ func (u *AppImageUnpacker) PreserveWithMetadata(srcPath, stagingDir, customName,
 	if format != domain.FormatAppImage {
 		return nil, fmt.Errorf("file is not an AppImage")
 	}
-	name,version,err:=appImageIdentityWithOverrides(srcPath,customName,customVersion)
-    if err!=nil{return nil,err}
+	name, version, err := appImageIdentityWithOverrides(srcPath, customName, customVersion)
+	if err != nil {
+		return nil, err
+	}
 	f, err := elf.Open(srcPath)
 	if err != nil {
 		return nil, fmt.Errorf("read AppImage ELF header: %w", err)
