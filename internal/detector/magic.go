@@ -20,7 +20,8 @@ var (
 	magicGzip     = []byte{0x1f, 0x8b}
 	magicZip      = []byte{0x50, 0x4b, 0x03, 0x04}
 	magicELF      = []byte{0x7f, 'E', 'L', 'F'}
-	magicAppImage = []byte{0x41, 0x49, 0x02} // at offset 8 of ELF
+	magicAppImageType1 = []byte{'A', 'I', 0x01}
+    magicAppImageType2 = []byte{'A', 'I', 0x02}
 	magicXZ       = []byte{0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00}
 )
 
@@ -62,12 +63,23 @@ func DetectReader(ra io.ReaderAt, size int64) (domain.Format, error) {
 		return domain.FormatDEB, nil
 	}
 
-	// 3. AppImage: ELF (0x7F 'E' 'L' 'F') with 0x41 0x49 0x02 at offset 8
-	if len(header) >= 11 && bytes.Equal(header[:4], magicELF) {
-		if bytes.Equal(header[8:11], magicAppImage) {
-			return domain.FormatAppImage, nil
-		}
-	}
+	// 3. Type 2 uses an appended SquashFS; Type 1 is an ISO9660 image
+ // whose ELF runtime lives inside the ISO system area (starting at byte 0).
+ // Some legacy Type 1 files predate the AI\x01 marker; validate their PVD.
+ if size >= 11 && bytes.Equal(header[:4],magicELF) {
+  if bytes.Equal(header[8:11],magicAppImageType2) {return domain.FormatAppImage,nil}
+  const pvdOffset int64 = 16*2048
+  if size >= pvdOffset+7 {
+   var pvd [7]byte
+   if n,err:=ra.ReadAt(pvd[:],pvdOffset);err==nil&&n==len(pvd) &&
+     pvd[0]==1&&bytes.Equal(pvd[1:6],[]byte("CD001"))&&pvd[6]==1 {
+     return domain.FormatAppImage,nil
+   }
+  }
+  if bytes.Equal(header[8:11],magicAppImageType1) {
+   return domain.FormatUnknown,fmt.Errorf("invalid AppImage Type 1: missing ISO9660 primary volume descriptor")
+  }
+ }
 
 	// 4. Zstandard (Arch .pkg.tar.zst): 28 B5 2F FD
 	if len(header) >= 4 && bytes.Equal(header[:4], magicZstd) {
