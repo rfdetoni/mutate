@@ -32,6 +32,10 @@ drop-zone/content area, fixed 332px inspector. At 900px the inspector
 moves below the content; at 640px the navigation becomes a compact
 horizontal scroll row. Full-width drop-zone is visually dominant.
 Activity state is a compact bordered module, not a dashboard full of cards.
+The desktop frame must never exceed the viewport once outer gutters are included.
+The sidebar, main content and inspector scroll independently only when their
+contents overflow; at 900px and below, stacked layouts use natural document
+scrolling so forms and result lists remain fully reachable.
 Use 1px borders and no resting shadows. Dialogs may use a small neutral
 shadow to communicate blocking context.
 
@@ -73,7 +77,8 @@ subordinate and does not pretend to be an official trusted repository.
 
 ## Approved application icon and simplified chrome
 The approved icon is the violet package-and-rotation-arrow mark, embedded at
-`cmd/mutate/ui/mutate.png` and in the native Wails shell. The title bar
+`cmd/mutate/ui/mutate.png` and in the native Wails shell. Both PNG copies must
+use transparent corners, with the violet artwork and light package face intact. The title bar
 shows only the app name and functional close control. Do not add technical
 footer copy such as "CLI + GUI", "local tool" or "local session". Keep
 repository management a flat row list with status, enable switch and one
