@@ -226,3 +226,22 @@ func TestGUIStateDoesNotLeakPaths(t *testing.T) {
 		t.Fatal("internal filesystem path leaked to UI")
 	}
 }
+
+func TestGUIRejectsDependencyMapFilePaths(t *testing.T) {
+	app, err := newGUIApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.close()
+	app.address = "127.0.0.1"
+	guiUploadTestFile(t, app, app.handler())
+	request := guiTestRequest(app, "POST", "/api/action",
+		strings.NewReader(`{"action":"convert","target":"deb","dependency_map":"/etc/passwd"}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	app.handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("GUI accepted a host path as dependency JSON: %d %s",
+			recorder.Code, recorder.Body.String())
+	}
+}

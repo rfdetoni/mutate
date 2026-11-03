@@ -54,8 +54,14 @@ func (a *guiApp) handleAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if strings.TrimSpace(req.DependencyMap) != "" {
-		if _, err := readDependencyMap(req.DependencyMap); err != nil {
+	if trimmed := strings.TrimSpace(req.DependencyMap); trimmed != "" {
+		// GUI settings accept inline JSON only. Never interpret a browser
+		// supplied value as a filesystem path on the host.
+		if !strings.HasPrefix(trimmed, "{") || !strings.HasSuffix(trimmed, "}") {
+			guiError(w, http.StatusBadRequest, "Informe o mapa de dependências como objeto JSON")
+			return
+		}
+		if _, err := readDependencyMap(trimmed); err != nil {
 			guiError(w, 400, "Mapeamento de dependências inválido: "+err.Error())
 			return
 		}
