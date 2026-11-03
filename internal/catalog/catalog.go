@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -310,30 +311,38 @@ func searchDNF(ctx context.Context, query string, run Command) ([]App, error) {
 	if _, err := exec.LookPath(executable); err != nil {
 		executable = "dnf"
 	}
-	format := "%{name}\t%{version}-%{release}\t%{summary}\t%{repoid}"
-	out, err := run(ctx, executable, "repoquery", "--available", "--latest-limit=1", "--queryformat="+format, "*"+query+"*")
-	if err != nil {
-		return nil, err
+	format := "%{name}\t%{version}-%{release}\t%{summary}\t%{repoid}\t%{arch}"
+	out, err := run(ctx, executable, "repoquery", "--available", "--latest-limit=1",
+		"--queryformat="+format, "*"+query+"*")
+	if err != nil { return nil, err }
+	arch := runtime.GOARCH
+	switch arch {
+	case "amd64": arch = "x86_64"
+	case "arm64": arch = "aarch64"
+	case "386": arch = "i686"
 	}
-	seen := map[string]bool{}
+	seen := map[string]int{}
 	var apps []App
 	for _, line := range strings.Split(string(out), "\n") {
-		fields := strings.SplitN(line, "\t", 4)
-		if len(fields) != 4 {
-			continue
-		}
+		fields := strings.SplitN(line, "\t", 5)
+		if len(fields) != 5 { continue }
 		name := strings.TrimSpace(fields[0])
-		if !ValidPackageName(name) || seen[name] {
+		candidateArch := strings.TrimSpace(fields[4])
+		if !ValidPackageName(name) ||
+			(candidateArch != arch && candidateArch != "noarch") { continue }
+		app := nativeApp(name, fields[1], fields[2], fields[3], "DNF")
+		if previous, ok := seen[name]; ok {
+			// An architecture-specific build takes precedence over noarch.
+			if candidateArch == arch { apps[previous] = app }
 			continue
 		}
-		seen[name] = true
-		apps = append(apps, nativeApp(name, fields[1], fields[2], fields[3], "DNF"))
-		if len(apps) >= ScanLimit {
-			break
-		}
+		seen[name] = len(apps)
+		apps = append(apps, app)
+		if len(apps) >= ScanLimit { break }
 	}
 	return apps, nil
 }
+
 func searchAPK(ctx context.Context, query string, run Command) ([]App, error) {
 	out, err := run(ctx, "apk", "search", "-v", "--description", query)
 	if err != nil {

@@ -94,7 +94,8 @@ func TestCatalogDNFOutput(t *testing.T) {
 		if name != "dnf" && name != "dnf5" {
 			t.Fatalf("wrong manager %s", name)
 		}
-		return []byte("blender\t4.5.3-1.fc43\t3D creation suite\tupdates\n"), nil
+		return []byte("blender\t99.0-1\tWrong CPU\ttest\ti686\n"+
+            "blender\t4.5.3-1.fc43\t3D creation suite\tupdates\tx86_64\n"), nil
 	}
 	apps, err := searchDNF(context.Background(), "blender", run)
 	if err != nil || len(apps) != 1 || apps[0].Repository != "updates" || apps[0].Version != "4.5.3-1.fc43" {
