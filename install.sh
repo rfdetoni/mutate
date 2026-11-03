@@ -9,6 +9,7 @@ METHOD=${MUTATE_INSTALL_METHOD:-auto}
 VERSION=${MUTATE_VERSION:-latest}
 REF=${MUTATE_REF:-main}
 DEST=${MUTATE_INSTALL_DIR:-}
+REGISTER_DESKTOP=${MUTATE_INSTALL_DESKTOP:-0}
 RELEASES=${MUTATE_RELEASE_BASE_URL:-https://github.com/$REPO/releases}
 SOURCE_URL=${MUTATE_SOURCE_URL:-https://codeload.github.com/$REPO/tar.gz/refs/heads/$REF}
 
@@ -19,15 +20,16 @@ die() { printf '%s\n' "ERROR: $*" >&2; exit 1; }
 usage() {
     cat <<'EOF'
 M.U.T.A.T.E. installer (Linux, POSIX sh)
-Usage: sh install.sh [--user | --system | --dir PATH] [--source | --release] [--version TAG]
+Usage: sh install.sh [--user | --system | --dir PATH] [--source | --release] [--version TAG] [--desktop]
   --user          Install to ~/.local/bin (default for unprivileged users)
   --system        Install to /usr/local/bin (needs write permission or passwordless sudo)
   --dir PATH      Install to a custom directory
   --source        Build from official source archive; bootstrap Go if necessary
   --release       Require a checksum-verified prebuilt GitHub release
   --version TAG   Select a release tag (default: latest)
+  --desktop       Register a user-level GUI launcher in the Linux application menu
   --help          Show help
-Environment: MUTATE_INSTALL_DIR, MUTATE_INSTALL_METHOD, MUTATE_VERSION, MUTATE_REF
+Environment: MUTATE_INSTALL_DIR, MUTATE_INSTALL_METHOD, MUTATE_VERSION, MUTATE_REF, MUTATE_INSTALL_DESKTOP
 EOF
 }
 
@@ -37,6 +39,7 @@ while [ "$#" -gt 0 ]; do
         --system) DEST="/usr/local/bin" ;;
         --dir) [ "$#" -ge 2 ] || die "--dir needs a path"; DEST=$2; shift ;;
         --source) METHOD=source ;;
+        --desktop) REGISTER_DESKTOP=1 ;;
         --release) METHOD=release ;;
         --version) [ "$#" -ge 2 ] || die "--version needs a tag"; VERSION=$2; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -268,3 +271,16 @@ case ":$PATH:" in
     *) warn "$DEST is not in PATH. Add: export PATH=\"$DEST:\$PATH\"" ;;
 esac
 say "Done. Run: $DEST/mutate --version"
+
+# Desktop integration is explicit and runs with the invoking user's identity.
+# A system install may use sudo for the binary, but the .desktop file is
+# always written under the user's own ~/.local/share/applications.
+if [ "$REGISTER_DESKTOP" = 1 ]; then
+    if [ "$(id -u)" -eq 0 ]; then
+        warn "skip GUI shortcut for root; run '$DEST/mutate gui --register' as your desktop user"
+    elif "$DEST/mutate" gui --register; then
+        say "GUI shortcut registered in your application menu"
+    else
+        warn "could not register desktop shortcut; run '$DEST/mutate gui --register' manually"
+    fi
+fi
