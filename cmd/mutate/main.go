@@ -74,7 +74,7 @@ func newInspectCmd() *cobra.Command {
 				return fmt.Errorf("detect format: %w", err)
 			}
 			fmt.Printf("Format detected: %s\n\n", strings.ToUpper(string(format)))
-			informRuntimePrerequisites(cmd,format,srcFile,extract)
+			informRuntimePrerequisites(cmd, format, srcFile, extract)
 
 			stagingDir, err := os.MkdirTemp("", "mutate-inspect-*")
 			if err != nil {
@@ -164,9 +164,11 @@ func newBuildCmd() *cobra.Command {
 		Short: "Convert a package to a native Linux package",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-            format,err:=detector.DetectFile(args[0])
-            if err!=nil{return err}
-            informRuntimePrerequisites(cmd,format,args[0],extract)
+			format, err := detector.DetectFile(args[0])
+			if err != nil {
+				return err
+			}
+			informRuntimePrerequisites(cmd, format, args[0], extract)
 			ir, cleanup, err := prepareConversionWithOptions(args[0], targetFormat, allowSourceBuild, conversionOptions{LibraryDir: libraryDir, DependencyMapPath: dependencyMapPath, Extract: extract})
 			if err != nil {
 				return err
@@ -222,9 +224,11 @@ func newInstallCmd() *cobra.Command {
 				return fmt.Errorf("unsupported host distribution %q", host)
 			}
 			src := args[0]
-            sourceFmt,err:=detector.DetectFile(src)
-            if err!=nil{return err}
-            informRuntimePrerequisites(cmd,sourceFmt,src,extract)
+			sourceFmt, err := detector.DetectFile(src)
+			if err != nil {
+				return err
+			}
+			informRuntimePrerequisites(cmd, sourceFmt, src, extract)
 			if dryRun {
 				fmt.Printf("[dry-run] Would convert %s (%s) to %s and request installation; no source build, packaging, or installation executed\n", src, sourceFmt, target)
 				return nil
@@ -268,17 +272,19 @@ func parseDomainFormat(s string) domain.Format {
 // informRuntimePrerequisites reports host-local runtime checks without
 // preventing conversion for a different target machine.
 func informRuntimePrerequisites(cmd *cobra.Command, format domain.Format, source string, extract bool) {
- notices,err:=prerequisites.Check(format,source,extract,prerequisites.DetectHostState(),resolver.DetectHostDistro())
- if err!=nil{
-  fmt.Fprintf(cmd.ErrOrStderr(),"[WARN] Could not check runtime prerequisites: %v\n",err)
-  return
- }
- for _,notice:=range notices {
-  level:="INFO"
-  if notice.Warning{level="WARN"}
-  fmt.Fprintf(cmd.ErrOrStderr(),"[%s] %s\n",level,notice.Message)
- }
- if len(notices)>0{
-  fmt.Fprintln(cmd.ErrOrStderr(),"[INFO] Checks reflect the current host, not necessarily the target system.")
- }
+	notices, err := prerequisites.Check(format, source, extract, prerequisites.DetectHostState(), resolver.DetectHostDistro())
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "[WARN] Could not check runtime prerequisites: %v\n", err)
+		return
+	}
+	for _, notice := range notices {
+		level := "INFO"
+		if notice.Warning {
+			level = "WARN"
+		}
+		fmt.Fprintf(cmd.ErrOrStderr(), "[%s] %s\n", level, notice.Message)
+	}
+	if len(notices) > 0 {
+		fmt.Fprintln(cmd.ErrOrStderr(), "[INFO] Checks reflect the current host, not necessarily the target system.")
+	}
 }
