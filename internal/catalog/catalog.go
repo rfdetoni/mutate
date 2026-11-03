@@ -314,31 +314,44 @@ func searchDNF(ctx context.Context, query string, run Command) ([]App, error) {
 	format := "%{name}\t%{version}-%{release}\t%{summary}\t%{repoid}\t%{arch}"
 	out, err := run(ctx, executable, "repoquery", "--available", "--latest-limit=1",
 		"--queryformat="+format, "*"+query+"*")
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	arch := runtime.GOARCH
 	switch arch {
-	case "amd64": arch = "x86_64"
-	case "arm64": arch = "aarch64"
-	case "386": arch = "i686"
+	case "amd64":
+		arch = "x86_64"
+	case "arm64":
+		arch = "aarch64"
+	case "386":
+		arch = "i686"
 	}
 	seen := map[string]int{}
 	var apps []App
 	for _, line := range strings.Split(string(out), "\n") {
 		fields := strings.SplitN(line, "\t", 5)
-		if len(fields) != 5 { continue }
+		if len(fields) != 5 {
+			continue
+		}
 		name := strings.TrimSpace(fields[0])
 		candidateArch := strings.TrimSpace(fields[4])
 		if !ValidPackageName(name) ||
-			(candidateArch != arch && candidateArch != "noarch") { continue }
+			(candidateArch != arch && candidateArch != "noarch") {
+			continue
+		}
 		app := nativeApp(name, fields[1], fields[2], fields[3], "DNF")
 		if previous, ok := seen[name]; ok {
 			// An architecture-specific build takes precedence over noarch.
-			if candidateArch == arch { apps[previous] = app }
+			if candidateArch == arch {
+				apps[previous] = app
+			}
 			continue
 		}
 		seen[name] = len(apps)
 		apps = append(apps, app)
-		if len(apps) >= ScanLimit { break }
+		if len(apps) >= ScanLimit {
+			break
+		}
 	}
 	return apps, nil
 }
