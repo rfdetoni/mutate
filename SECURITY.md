@@ -29,3 +29,7 @@ Report security issues privately to the repository owner rather than filing a pu
 - The extractor path remains explicitly available through `--extract`. Use low-privilege accounts and quotas for parsing untrusted ISO9660 or SquashFS.
 - Android APKs are stored intact for Waydroid. Waydroid must be installed; they cannot be run as native Linux binaries.
 - Native package archives and source tarballs must not be automatically treated as self-contained executable applications.
+
+## Runtime prerequisite checks
+
+The runtime preflight reports whether Waydroid is available on PATH or whether common legacy FUSE 2 libraries and `/dev/fuse` can be observed. It does not execute AppImages or APKs, install dependencies, probe an Android container or guarantee that the destination machine supports the artifact. In particular, an AppImage Type 2 may use a newer runtime with built-in FUSE 3 support; the absence of a FUSE 2 library is advisory, not a hard failure.

@@ -1,7 +1,7 @@
 name: Mutate validation
 on:
   push:
-    branches: [feat/preserve-self-contained]
+    branches: [feat/runtime-prerequisites-warning]
   workflow_dispatch:
 permissions:
   contents: write

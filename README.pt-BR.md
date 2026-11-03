@@ -173,3 +173,9 @@ mutate inspect aplicativo.AppImage --extract
 ```
 
 O empacotamento referencia diretamente o arquivo de origem; não realiza cópia intermediária desnecessária. A instalação cria os arquivos de destino com o gerenciador de pacotes nativo.
+
+### Validação de pré-requisitos de execução
+
+Ao receber um **APK Android**, os comandos `mutate inspect`, `build` e `install` verificam se `waydroid` está disponível no PATH e informam que o Waydroid precisa estar instalado e configurado para executar o aplicativo. Para **AppImage Type 2 preservado**, verificam a disponibilidade de `/dev/fuse` e `libfuse.so.2` em locais comuns, com avisos e sugestões específicas da distribuição quando ausentes. AppImages antigos podem exigir FUSE 2; runtimes mais novos podem utilizar FUSE 3. **Type 1 não exige necessariamente FUSE 2**. Com `--extract`, a extração do AppImage original não requer montagem por FUSE.
+
+Os avisos são informativos: **não instalam dependências nem bloqueiam a geração de pacotes**. A checagem considera o host atual, não necessariamente o ambiente de destino, e não comprova que serviços ou bibliotecas estejam operacionais.
