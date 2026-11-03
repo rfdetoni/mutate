@@ -137,6 +137,14 @@ download_release() {
     return 0
 }
 
+# Probe an explicitly local Go toolchain outside the caller's module.
+# An unqualified 'go version' inside a project may transparently switch
+# toolchains via GOTOOLCHAIN=auto, even when PATH points to an older Go.
+local_go_version() {
+    (cd "$WORK" && unset GOROOT GOTOOLDIR && GOTOOLCHAIN=local "$1" version) 2>/dev/null |
+        awk '$1 == "go" && $2 == "version" {sub(/^go/, "", $3); print $3; exit}'
+}
+
 version_at_least() {
     awk -v got="$1" -v need="$2" 'BEGIN {
         split(got, g, "."); split(need, n, ".")
@@ -191,15 +199,22 @@ build_from_source() {
     NEEDED_GO=$(awk '$1 == "go" {print $2; exit}' "$SRC/go.mod")
     case "$NEEDED_GO" in ""|*[!0-9.]*) die "invalid go directive in source go.mod" ;; esac
     GO_BIN=
-    if command -v go >/dev/null 2>&1; then
-        installed=$(go version 2>/dev/null | awk '{sub(/^go/,"",$3); print $3}')
+    if go_candidate=$(command -v go 2>/dev/null); then
+        installed=$(local_go_version "$go_candidate")
         if version_at_least "$installed" "$NEEDED_GO"; then
-            GO_BIN=$(command -v go)
+            GO_BIN=$go_candidate
+        elif [ -n "$installed" ]; then
+            warn "local Go $installed is older than the required $NEEDED_GO; using a temporary verified toolchain"
         fi
     fi
     [ -n "$GO_BIN" ] || bootstrap_go
-    say "Building with $("$GO_BIN" version)..."
-    (cd "$SRC" && CGO_ENABLED=0 GOOS=linux GOTOOLCHAIN=local "$GO_BIN" build -trimpath -ldflags="-s -w" -o "$WORK/mutate" ./cmd/mutate) || die "Go build failed"
+    actual=$(local_go_version "$GO_BIN")
+    version_at_least "$actual" "$NEEDED_GO" ||
+        die "selected Go toolchain ${actual:-unknown} is older than required $NEEDED_GO"
+    say "Building with Go $actual..."
+    (cd "$SRC" && unset GOROOT GOTOOLDIR &&
+        CGO_ENABLED=0 GOOS=linux GOTOOLCHAIN=local "$GO_BIN" build -trimpath -ldflags="-s -w" -o "$WORK/mutate" ./cmd/mutate) ||
+        die "Go build failed with toolchain $actual"
     [ -s "$WORK/mutate" ] || die "build produced no binary"
     SOURCE_BINARY="$WORK/mutate"
 }
