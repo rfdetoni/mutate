@@ -180,13 +180,22 @@ tar -czf "$TMP/fixtures/source.tar.gz" -C "$TMP/fixtures/source" mutate-main
 
 cat > "$TMP/fixtures/bin/pkg-config" <<'EOF'
 #!/bin/sh
-[ "$1" = "--exists" ] || exit 1
+case "$1" in --exists|--cflags) ;; *) exit 1 ;; esac
 [ -f "$MOCK_FIXTURES/gui-installed" ] || exit 1
 case "$*" in
   *"gtk4 webkitgtk-6.0"*) [ "${MOCK_GUI_LEGACY:-0}" = 0 ] ;;
   *"gtk+-3.0 webkit2gtk-4.1"*) [ "${MOCK_GUI_LEGACY:-0}" = 1 ] ;;
   *) exit 1 ;;
-esac
+esac || exit 1
+[ "$1" != --cflags ] || printf '%s\n' '-I/mock/include'
+EOF
+cat > "$TMP/fixtures/bin/cc" <<'EOF'
+#!/bin/sh
+# A present .pc file alone does not guarantee compilable GTK headers.
+[ -f "$MOCK_FIXTURES/gui-installed" ] || exit 1
+if [ "${MOCK_GUI_BROKEN_HEADERS:-0}" = 1 ]; then
+  [ -f "$MOCK_FIXTURES/gui-repaired" ] || exit 1
+fi
 EOF
 cat > "$TMP/fixtures/bin/apt-cache" <<'EOF'
 #!/bin/sh
@@ -201,7 +210,11 @@ cat > "$TMP/fixtures/bin/apt-get" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >> "$MOCK_FIXTURES/gui-apt.log"
 case "$1" in
-  install) touch "$MOCK_FIXTURES/gui-installed" ;;
+  install)
+    touch "$MOCK_FIXTURES/gui-installed"
+    case " $* " in
+      *" --reinstall "*) touch "$MOCK_FIXTURES/gui-repaired" ;;
+    esac ;;
   update) : ;;
   *) exit 1 ;;
 esac
@@ -216,7 +229,7 @@ fi
 exec "$@"
 EOF
 chmod 755 "$TMP/fixtures/bin/pkg-config" "$TMP/fixtures/bin/apt-cache" \
-  "$TMP/fixtures/bin/apt-get" "$TMP/fixtures/bin/sudo"
+  "$TMP/fixtures/bin/apt-get" "$TMP/fixtures/bin/sudo" "$TMP/fixtures/bin/cc"
 
 MOCK_GUI_LEGACY=0
 export MOCK_GUI_LEGACY
@@ -235,6 +248,19 @@ rm -f "$TMP/fixtures/gui-apt.log"
 sh "$ROOT/install.sh" --source > "$TMP/gui-present.log" 2>&1 ||
   { cat "$TMP/gui-present.log"; die "GUI dependencies already present"; }
 [ ! -e "$TMP/fixtures/gui-apt.log" ] || die "reinstalled GTK dependencies unnecessarily"
+
+# Reproduce partially installed GLib/Pango headers with valid pkg-config metadata.
+MOCK_GUI_BROKEN_HEADERS=1
+export MOCK_GUI_BROKEN_HEADERS
+rm -f "$TMP/fixtures/gui-repaired" "$TMP/fixtures/gui-apt.log"
+sh "$ROOT/install.sh" --source > "$TMP/gui-header-repair.log" 2>&1 ||
+  { cat "$TMP/gui-header-repair.log"; die "incomplete native GUI headers" ; }
+grep -q 'install -y --reinstall --no-install-recommends' "$TMP/fixtures/gui-apt.log" ||
+  die "incomplete development headers were not repaired"
+grep -q 'development headers are incomplete' "$TMP/gui-header-repair.log" ||
+  die "missing header repair explanation"
+MOCK_GUI_BROKEN_HEADERS=0
+export MOCK_GUI_BROKEN_HEADERS
 
 # Prefer the legacy Wails GTK3 build if the distro provides WebKitGTK 4.1.
 MOCK_GUI_LEGACY=1
