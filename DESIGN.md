@@ -35,12 +35,10 @@ Desktop: application titlebar (69px), narrow 182px navigation, flexible
 drop-zone/content area, fixed 332px inspector. Gio desktop has a minimum width of 840dp. Package workflows show a
 persistent native inspector on the right; other workflows use a wide panel.
 At narrow sizes, scrolling is confined to content panes, not the shell. Full-width drop-zone is visually dominant.
-Package chooser and activity cards grow with the center workspace up to 680dp.
+Package chooser and activity cards fill the available center workspace width,\nrespecting the existing outer gutters. Content and controls retain their natural widths.
 Activity state is a compact bordered module, not a dashboard full of cards.
 The desktop frame must never exceed the viewport once outer gutters are included.
-The sidebar, main content and inspector scroll independently only when their
-contents overflow; at 900px and below, stacked layouts use natural document
-scrolling so forms and result lists remain fully reachable.
+Package workflows do not display a central scrollbar; wheel/trackpad scrolling\nremains available when content exceeds the viewport (small windows or zoom).\nLong lists such as Biblioteca, Repositórios and Histórico retain a visible\nscrollbar. The inspector scrolls independently if its content overflows.
 Use 1px borders and no resting shadows. Dialogs may use a small neutral
 shadow to communicate blocking context.
 
