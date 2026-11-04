@@ -287,7 +287,7 @@ build_desktop_shell() {
     say "Building native Gio desktop window (no GTK or WebView)..."
     if (cd "$SRC/desktop" && unset GOROOT GOTOOLDIR &&
         GOTOOLCHAIN=local "$GO_BIN" mod tidy &&
-        CGO_ENABLED=1 GOOS=linux GOTOOLCHAIN=local "$GO_BIN" build ${gui_tags:+"$gui_tags"} -trimpath -ldflags="-s -w" -o "$WORK/mutate-gio" .); then
+        CGO_ENABLED=1 GOOS=linux GOTOOLCHAIN=local "$GO_BIN" build ${gui_tags:+"$gui_tags"} -trimpath -ldflags="-s -w -X gioui.org/app.ID=mutate" -o "$WORK/mutate-gio" .); then
         [ -s "$WORK/mutate-gio" ] && GUI_BINARY="$WORK/mutate-gio"
     else
         warn "native Gio build failed; CLI remains available. Browser requires explicit --browser."
