@@ -82,6 +82,9 @@ case "$1" in
      exit 1
    fi
    printf '%s\n' "$*" >> "$MOCK_FIXTURES/go-build-args.log"
+   if [ "${CGO_ENABLED:-0}" = 1 ]; then
+     printf '%s\n' "${CC:-missing}" >> "$MOCK_FIXTURES/go-cgo-compiler.log"
+   fi
    out=
    while [ "$#" -gt 0 ]; do
      if [ "$1" = "-o" ]; then out=$2; shift 2; else shift; fi
@@ -244,9 +247,10 @@ fi
 [ "${MOCK_GUI_SUDO_DENY:-0}" = 0 ] || exit 1
 exec "$@"
 EOF
+cp "$TMP/fixtures/bin/cc" "$TMP/fixtures/bin/gcc"
 chmod 755 "$TMP/fixtures/bin/pkg-config" "$TMP/fixtures/bin/apt-cache" \
   "$TMP/fixtures/bin/apt-get" "$TMP/fixtures/bin/sudo" "$TMP/fixtures/bin/cc" \
-  "$TMP/fixtures/bin/dpkg-query"
+  "$TMP/fixtures/bin/gcc" "$TMP/fixtures/bin/dpkg-query"
 
 MOCK_GUI_LEGACY=0
 export MOCK_GUI_LEGACY
@@ -257,6 +261,8 @@ sh "$ROOT/install.sh" --source > "$TMP/gui-auto.log" 2>&1 ||
   { cat "$TMP/gui-auto.log"; die "automatic Gio dependencies"; }
 [ "$("$MUTATE_INSTALL_DIR/mutate")" = source-binary ] || die "GUI install broke CLI"
 [ -x "$MUTATE_INSTALL_DIR/mutate-gio" ] || die "native Gio shell not installed"
+grep -qx 'gcc' "$TMP/fixtures/go-cgo-compiler.log" ||
+  die "Gio CGO build did not use the compiler tested by the Vulkan probe"
 grep -q 'install -y --no-install-recommends build-essential pkg-config libwayland-dev' \
   "$TMP/fixtures/gui-apt.log" || die "Gio graphics development packages not installed"
 

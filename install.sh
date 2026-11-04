@@ -201,21 +201,18 @@ bootstrap_go() {
 # Gio uses a native GPU window: no GTK, WebKit, Chrome or HTML runtime.
 # A .pc check for EGL/GLES/X11 does not imply Vulkan headers are installed.
 gio_vulkan_headers() {
-    command -v cc >/dev/null 2>&1 || return 1
+    command -v gcc >/dev/null 2>&1 || return 1
     vulkan_flags=$(pkg-config --cflags vulkan 2>/dev/null || :)
     # Pass pkg-config compiler arguments directly, never through eval.
     # Keep stderr so a missing header or a broken compiler is diagnosable.
     # shellcheck disable=SC2086
-    printf '#include <vulkan/vulkan.h>\n' | cc $vulkan_flags -x c -fsyntax-only - >/dev/null 2>"$WORK/gio-vulkan-probe.log"
+    printf '#include <vulkan/vulkan.h>\n' | gcc $vulkan_flags -x c -fsyntax-only - >/dev/null 2>"$WORK/gio-vulkan-probe.log"
 }
 
 gio_diagnose_deps() {
     warn "Gio native graphics diagnostics:"
     if ! command -v gcc >/dev/null 2>&1; then
         warn "C compiler (gcc) is unavailable"
-    fi
-    if ! command -v cc >/dev/null 2>&1; then
-        warn "C compiler (cc) is unavailable"
     fi
     if ! command -v pkg-config >/dev/null 2>&1; then
         warn "pkg-config is unavailable"
@@ -240,7 +237,7 @@ gio_diagnose_deps() {
         if [ -s "$WORK/gio-vulkan-probe.log" ]; then
             sed -n '1,20p' "$WORK/gio-vulkan-probe.log" >&2
         else
-            warn "no compiler stderr was captured; check CC, pkg-config and compiler search paths"
+            warn "no compiler stderr was captured; check gcc, pkg-config and compiler search paths"
         fi
     fi
 }
@@ -356,7 +353,7 @@ build_desktop_shell() {
     say "Building native Gio desktop window (no GTK or WebView)..."
     if (cd "$SRC/desktop" && unset GOROOT GOTOOLDIR &&
         GOTOOLCHAIN=local "$GO_BIN" mod tidy &&
-        CGO_ENABLED=1 GOOS=linux GOTOOLCHAIN=local "$GO_BIN" build ${gui_tags:+"$gui_tags"} -trimpath -ldflags="-s -w -X gioui.org/app.ID=mutate" -o "$WORK/mutate-gio" .); then
+        CC=gcc CGO_ENABLED=1 GOOS=linux GOTOOLCHAIN=local "$GO_BIN" build ${gui_tags:+"$gui_tags"} -trimpath -ldflags="-s -w -X gioui.org/app.ID=mutate" -o "$WORK/mutate-gio" .); then
         [ -s "$WORK/mutate-gio" ] && GUI_BINARY="$WORK/mutate-gio"
     else
         warn "native Gio build failed; CLI remains available. Browser requires explicit --browser."
