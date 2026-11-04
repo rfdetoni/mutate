@@ -47,7 +47,9 @@ chooser and activity modules expand to the full available workspace width. Sessi
 2.5 seconds, and the idle window sets the default cursor; this is not a
 substitute for testing the actual pointer behavior on all Linux desktops.
 Seven sections: Converter, Biblioteca, Repositórios, Inspecionar, Instalar,
-Histórico, Configurações. Native file chooser and save dialog use XDG Portals,
+Histórico, Configurações. Biblioteca uses a full-width search field and
+full-width result rows, with installation actions aligned right on wide
+windows and stacked below the details when space is limited. Native file chooser and save dialog use XDG Portals,
 with an explicit file-path fallback; actions are asynchronous and show real
 operation status and errors. Installation always requires confirmation.
 Converter, Inspecionar and Instalar use a static central workspace: wheel and
