@@ -24,6 +24,11 @@ CGO_ENABLED=1 go build -o ../mutate-gio .
 The installer checks for the Vulkan C header (`vulkan/vulkan.h`) as well as
 EGL/GLES and X11/Wayland. If only Vulkan headers are missing on Ubuntu,
 it installs `libvulkan-dev` without reinstalling the entire graphics stack.
+If the package is already installed but the compiler cannot read its headers,
+the installer prints the actual compiler error and skips reinstalling packages.
+Review the diagnostic and check the compiler include paths on the host.
+The native source installer uses GCC both for the Vulkan header probe and the
+CGO build, so a custom `CC` setting cannot make these two checks disagree.
 
 For X11-only systems, `-tags=nowayland` is supported; for Wayland-only
 systems, `-tags=nox11`. The installer detects which is available.

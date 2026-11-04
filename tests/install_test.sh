@@ -82,6 +82,9 @@ case "$1" in
      exit 1
    fi
    printf '%s\n' "$*" >> "$MOCK_FIXTURES/go-build-args.log"
+   if [ "${CGO_ENABLED:-0}" = 1 ]; then
+     printf '%s\n' "${CC:-missing}" >> "$MOCK_FIXTURES/go-cgo-compiler.log"
+   fi
    out=
    while [ "$#" -gt 0 ]; do
      if [ "$1" = "-o" ]; then out=$2; shift 2; else shift; fi
@@ -196,11 +199,22 @@ cat > "$TMP/fixtures/bin/cc" <<'EOF'
 # The Vulkan header probe must fail even when EGL/GLES/X11 .pc modules exist.
 case "$(cat)" in
     *"vulkan/vulkan.h"*)
+        if [ "${MOCK_GUI_BAD_COMPILER:-0}" = 1 ]; then
+            echo "fatal error: Vulkan header is inaccessible to cc" >&2
+            exit 1
+        fi
         [ -f "$MOCK_FIXTURES/vulkan-installed" ] || {
             echo "fatal error: vulkan/vulkan.h: No such file or directory" >&2
             exit 1
         } ;;
 esac
+EOF
+cat > "$TMP/fixtures/bin/dpkg-query" <<'EOF'
+#!/bin/sh
+[ "$1" = "-W" ] || exit 1
+[ "$3" = "libvulkan-dev" ] || exit 1
+[ -f "$MOCK_FIXTURES/vulkan-installed" ] || exit 1
+printf '%s' 'install ok installed'
 EOF
 cat > "$TMP/fixtures/bin/apt-cache" <<'EOF'
 #!/bin/sh
@@ -233,8 +247,10 @@ fi
 [ "${MOCK_GUI_SUDO_DENY:-0}" = 0 ] || exit 1
 exec "$@"
 EOF
+cp "$TMP/fixtures/bin/cc" "$TMP/fixtures/bin/gcc"
 chmod 755 "$TMP/fixtures/bin/pkg-config" "$TMP/fixtures/bin/apt-cache" \
-  "$TMP/fixtures/bin/apt-get" "$TMP/fixtures/bin/sudo" "$TMP/fixtures/bin/cc"
+  "$TMP/fixtures/bin/apt-get" "$TMP/fixtures/bin/sudo" "$TMP/fixtures/bin/cc" \
+  "$TMP/fixtures/bin/gcc" "$TMP/fixtures/bin/dpkg-query"
 
 MOCK_GUI_LEGACY=0
 export MOCK_GUI_LEGACY
@@ -245,6 +261,8 @@ sh "$ROOT/install.sh" --source > "$TMP/gui-auto.log" 2>&1 ||
   { cat "$TMP/gui-auto.log"; die "automatic Gio dependencies"; }
 [ "$("$MUTATE_INSTALL_DIR/mutate")" = source-binary ] || die "GUI install broke CLI"
 [ -x "$MUTATE_INSTALL_DIR/mutate-gio" ] || die "native Gio shell not installed"
+grep -qx 'gcc' "$TMP/fixtures/go-cgo-compiler.log" ||
+  die "Gio CGO build did not use the compiler tested by the Vulkan probe"
 grep -q 'install -y --no-install-recommends build-essential pkg-config libwayland-dev' \
   "$TMP/fixtures/gui-apt.log" || die "Gio graphics development packages not installed"
 
@@ -268,6 +286,27 @@ sh "$ROOT/install.sh" --source > "$TMP/gui-vulkan-present.log" 2>&1 ||
   { cat "$TMP/gui-vulkan-present.log"; die "Vulkan headers already installed"; }
 [ ! -e "$TMP/fixtures/gui-apt.log" ] ||
   die "Gio reinstalled Vulkan headers unnecessarily"
+
+# Real-world regression: apt reports libvulkan-dev installed, but the
+# compiler still cannot access the Vulkan header. Show the actual failure
+# and never install the same package again or claim that Gio was built.
+MOCK_GUI_BAD_COMPILER=1
+export MOCK_GUI_BAD_COMPILER
+rm -f "$TMP/fixtures/gui-apt.log" "$MUTATE_INSTALL_DIR/mutate-gio"
+sh "$ROOT/install.sh" --source > "$TMP/gui-vulkan-compiler.log" 2>&1 ||
+  { cat "$TMP/gui-vulkan-compiler.log"; die "Vulkan compiler diagnostics"; }
+[ ! -e "$TMP/fixtures/gui-apt.log" ] ||
+  die "Gio tried to reinstall an already-installed Vulkan package"
+[ ! -e "$MUTATE_INSTALL_DIR/mutate-gio" ] ||
+  die "Gio reported success when Vulkan compiler check failed"
+grep -q 'libvulkan-dev is already installed' "$TMP/gui-vulkan-compiler.log" ||
+  die "Gio did not recognize the installed Vulkan package"
+grep -q 'Vulkan header compiler probe failed' "$TMP/gui-vulkan-compiler.log" ||
+  die "Gio hid the failed Vulkan compiler check"
+grep -q 'fatal error: Vulkan header is inaccessible to cc' "$TMP/gui-vulkan-compiler.log" ||
+  die "Gio swallowed the compiler diagnostic"
+MOCK_GUI_BAD_COMPILER=0
+export MOCK_GUI_BAD_COMPILER
 
 # An X11-only machine must build Gio without installing the Wayland stack.
 MOCK_GUI_NO_WAYLAND=1
