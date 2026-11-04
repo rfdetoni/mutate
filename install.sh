@@ -198,14 +198,47 @@ bootstrap_go() {
     [ -x "$GO_BIN" ] || die "downloaded Go toolchain is not executable"
 }
 
-# Detect a complete native build environment. Keep the CLI independent
-# from GTK, WebKit and CGO whether or not this succeeds.
-have_native_gui_deps() {
-    command -v gcc >/dev/null 2>&1 || return 1
-    command -v pkg-config >/dev/null 2>&1 || return 1
-    pkg-config --exists gtk4 webkitgtk-6.0 2>/dev/null ||
-        pkg-config --exists gtk+-3.0 webkit2gtk-4.1 2>/dev/null
+# pkg-config --exists is insufficient: stale .pc files may exist even when
+# GLib/Pango development headers are missing. Probe with a real C compiler.
+native_gui_headers() {
+    case "$1" in
+        gtk4)
+            set -- gtk4 webkitgtk-6.0
+            includes='#include <glib-object.h>
+#include <pango/pango.h>
+#include <gtk/gtk.h>
+#include <webkit/webkit.h>' ;;
+        gtk3)
+            set -- gtk+-3.0 webkit2gtk-4.1
+            includes='#include <glib-object.h>
+#include <pango/pango.h>
+#include <gtk/gtk.h>
+#include <webkit2/webkit2.h>' ;;
+        *) return 1 ;;
+    esac
+    flags=$(pkg-config --cflags "$@") || return 1
+    # pkg-config produces compiler argv flags; split them, never eval them.
+    # shellcheck disable=SC2086
+    printf '%s\n' "$includes" | cc $flags -x c -fsyntax-only - >/dev/null 2>&1
 }
+
+native_gui_variant() {
+    command -v gcc >/dev/null 2>&1 || return 1
+    command -v cc >/dev/null 2>&1 || return 1
+    command -v pkg-config >/dev/null 2>&1 || return 1
+    if pkg-config --exists gtk4 webkitgtk-6.0 2>/dev/null &&
+       native_gui_headers gtk4; then
+        printf '%s\n' gtk4
+    elif pkg-config --exists gtk+-3.0 webkit2gtk-4.1 2>/dev/null &&
+         native_gui_headers gtk3; then
+        printf '%s\n' gtk3
+    else
+        return 1
+    fi
+}
+
+# Keep the CGO-free CLI independent of the optional Wails/GTK build.
+have_native_gui_deps() { native_gui_variant >/dev/null; }
 
 # The script may be piped to 'sh', so stdin is not a password prompt.
 # sudo reads from /dev/tty only if stderr is attached to a terminal.
@@ -231,26 +264,44 @@ gui_root() {
 # distributions, choose the supported GTK3/WebKit2GTK 4.1 build instead.
 # Package names here are fixed allowlisted strings, never downloaded scripts.
 apt_gui_packages() {
-    if apt-cache show libwebkitgtk-6.0-dev >/dev/null 2>&1; then
-        GUI_PACKAGES="build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev"
+    # Repair the stack already selected by the host before installing a
+    # different major GTK version just because its packages are available.
+    if pkg-config --exists gtk4 webkitgtk-6.0 2>/dev/null; then
+        gui_stack=gtk4
+    elif pkg-config --exists gtk+-3.0 webkit2gtk-4.1 2>/dev/null; then
+        gui_stack=gtk3
+    elif apt-cache show libwebkitgtk-6.0-dev >/dev/null 2>&1; then
+        gui_stack=gtk4
     elif apt-cache show libwebkit2gtk-4.1-dev >/dev/null 2>&1; then
-        GUI_PACKAGES="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev"
+        gui_stack=gtk3
     else
         say "Refreshing APT package metadata to locate the compatible WebKitGTK version..."
         gui_root apt-get update -qq || return 1
         if apt-cache show libwebkitgtk-6.0-dev >/dev/null 2>&1; then
-            GUI_PACKAGES="build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev"
+            gui_stack=gtk4
         elif apt-cache show libwebkit2gtk-4.1-dev >/dev/null 2>&1; then
-            GUI_PACKAGES="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev"
+            gui_stack=gtk3
         else
             warn "neither supported WebKitGTK development package is available in APT"
             return 1
         fi
     fi
-    # Shell splitting is intentional: GUI_PACKAGES contains only literals
-    # assigned directly above, no user-controlled input or shell expansion.
+    case "$gui_stack" in
+        gtk4)
+            GUI_PACKAGES="build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev libglib2.0-dev libpango1.0-dev"
+            GUI_REPAIR_PACKAGES="libgtk-4-dev libwebkitgtk-6.0-dev libglib2.0-dev libpango1.0-dev" ;;
+        gtk3)
+            GUI_PACKAGES="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libglib2.0-dev libpango1.0-dev"
+            GUI_REPAIR_PACKAGES="libgtk-3-dev libwebkit2gtk-4.1-dev libglib2.0-dev libpango1.0-dev" ;;
+    esac
+    # Shell splitting is intentional: these package lists contain only literals.
     # shellcheck disable=SC2086
-    gui_root apt-get install -y --no-install-recommends $GUI_PACKAGES
+    gui_root apt-get install -y --no-install-recommends $GUI_PACKAGES || return 1
+    if ! have_native_gui_deps; then
+        say "GTK/WebKit metadata is present but development headers are incomplete; repairing packages..."
+        # shellcheck disable=SC2086
+        gui_root apt-get install -y --reinstall --no-install-recommends $GUI_REPAIR_PACKAGES || return 1
+    fi
 }
 
 install_gui_build_deps() {
@@ -294,15 +345,12 @@ build_desktop_shell() {
             return 0
         fi
     fi
-    gui_tags=
-    if pkg-config --exists gtk4 webkitgtk-6.0 2>/dev/null; then
-        gui_tags=
-    elif pkg-config --exists gtk+-3.0 webkit2gtk-4.1 2>/dev/null; then
-        gui_tags="-tags=gtk3"
-    else
-        warn "GTK/WebKit not available after dependency check; using browser fallback"
+    gui_variant=$(native_gui_variant) || {
+        warn "GTK/WebKit headers remain unavailable after dependency check; using browser fallback"
         return 0
-    fi
+    }
+    gui_tags=
+    [ "$gui_variant" != gtk3 ] || gui_tags="-tags=gtk3"
     say "Building native Wails desktop window..."
     if (cd "$SRC/desktop" && unset GOROOT GOTOOLDIR &&
         GOTOOLCHAIN=local "$GO_BIN" mod tidy &&

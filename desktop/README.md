@@ -13,6 +13,12 @@ cd desktop
 CGO_ENABLED=1 go build -o ../mutate-gui .
 ```
 
+Tagged GitHub releases bundle a precompiled GTK3 `mutate-gui` alongside
+`mutate` for Linux amd64. These releases do not need Go, pkg-config or
+development headers on the destination; GTK3 and WebKit2GTK 4.1 runtime
+libraries are still required. Other architectures currently use the source
+build fallback for the native shell.
+
 Install the compiled `mutate-gui` next to the `mutate` CLI binary. Then
 `mutate gui` detects it and launches a native window. The main installer automatically detects and installs missing GUI build
 libraries via APT, DNF, pacman or zypper when building from source. It
