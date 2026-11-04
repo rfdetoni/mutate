@@ -35,7 +35,7 @@ func newGUICmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gui",
 		Short: "Open the integrated package installer and converter interface",
-		Long:  "Open the M.U.T.A.T.E. graphical interface in the native Wails window when installed; the browser remains an explicit fallback.",
+		Long:  "Open the M.U.T.A.T.E. graphical interface in the native Wails window. Use --browser to explicitly open a browser.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if port < 0 || port > 65535 {
@@ -53,6 +53,13 @@ func newGUICmd() *cobra.Command {
 				}
 				fmt.Fprintln(cmd.OutOrStdout(), "Atalho M.U.T.A.T.E. instalado no menu de aplicativos.")
 				return nil
+			}
+			// Missing Wails must never silently launch Chrome. Validate the
+			// native window before allocating a session or binding a port.
+			if !noBrowser && !browser {
+				if _, err := nativeGUIExecutable(); err != nil {
+					return fmt.Errorf("janela nativa Wails indisponível: %w. Reinstale o Mutate para instalar mutate-gui; para usar um navegador, execute 'mutate gui --browser'", err)
+				}
 			}
 			app, err := newGUIApp()
 			if err != nil {
@@ -82,27 +89,27 @@ func newGUICmd() *cobra.Command {
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 			go func() { <-ctx.Done(); app.shutdown() }()
-			var native *exec.Cmd
 			if !noBrowser {
-				if !browser {
-					var nativeErr error
-					native, nativeErr = startNativeGUI(url)
-					if nativeErr != nil {
-						fmt.Fprintf(cmd.ErrOrStderr(), "Native Wails window unavailable (%v); opening browser fallback.\n", nativeErr)
+				if browser {
+					if err := openGUIBrowser(url); err != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "Unable to open browser: %v\nOpen %s manually.\n", err, url)
 					}
-				}
-				if native != nil {
+				} else {
+					native, err := startNativeGUI(url)
+					if err != nil {
+						return fmt.Errorf("falha ao iniciar a janela nativa Wails: %w. Use 'mutate gui --browser' apenas se desejar abrir no navegador", err)
+					}
 					defer func() {
 						if native.Process != nil {
 							_ = native.Process.Kill()
 						}
 					}()
 					go func() {
-						_ = native.Wait()
+						if err := native.Wait(); err != nil {
+							fmt.Fprintf(cmd.ErrOrStderr(), "Janela Wails encerrada com erro: %v\n", err)
+						}
 						app.shutdown()
 					}()
-				} else if err := openGUIBrowser(url); err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "Unable to open GUI automatically: %v\nOpen %s manually.\n", err, url)
 				}
 			}
 			err = server.Serve(ln)
@@ -114,7 +121,7 @@ func newGUICmd() *cobra.Command {
 	}
 	cmd.Flags().IntVar(&port, "port", 0, "Local loopback port (0 picks an available port)")
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Start the GUI service without opening a window")
-	cmd.Flags().BoolVar(&browser, "browser", false, "Force the browser-based fallback instead of Wails")
+	cmd.Flags().BoolVar(&browser, "browser", false, "Explicitly open the interface in a web browser instead of Wails")
 	cmd.Flags().StringVar(&exportIcon, "export-icon", "", "Export bundled PNG application icon to a file")
 	cmd.Flags().BoolVar(&register, "register", false, "Register M.U.T.A.T.E. in the current user's Linux application menu")
 	return cmd
@@ -223,21 +230,34 @@ func exportGUIIcon(filename string) error {
 	return os.WriteFile(filename, data, 0644)
 }
 
-func startNativeGUI(url string) (*exec.Cmd, error) {
+// Locate the sibling shell before starting a GUI session.
+func nativeGUIExecutable() (string, error) {
 	if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
-		return nil, fmt.Errorf("no graphical session")
+		return "", fmt.Errorf("nenhuma sessão gráfica detectada (DISPLAY/WAYLAND_DISPLAY)")
 	}
 	executable, err := os.Executable()
 	if err != nil {
-		return nil, err
+		return "", err
 	}
+	return nativeGUIFromCLI(executable)
+}
+
+func nativeGUIFromCLI(executable string) (string, error) {
 	native := filepath.Join(filepath.Dir(executable), "mutate-gui")
 	info, err := os.Stat(native)
 	if err != nil {
-		return nil, fmt.Errorf("mutate-gui not installed next to CLI: %w", err)
+		return "", fmt.Errorf("mutate-gui não encontrado ao lado de %s: %w", executable, err)
 	}
-	if info.IsDir() || info.Mode()&0111 == 0 {
-		return nil, fmt.Errorf("mutate-gui is not executable")
+	if !info.Mode().IsRegular() || info.Mode()&0111 == 0 {
+		return "", fmt.Errorf("mutate-gui não é um executável regular: %s", native)
+	}
+	return native, nil
+}
+
+func startNativeGUI(url string) (*exec.Cmd, error) {
+	native, err := nativeGUIExecutable()
+	if err != nil {
+		return nil, err
 	}
 	cmd := exec.Command(native, url)
 	if err := cmd.Start(); err != nil {

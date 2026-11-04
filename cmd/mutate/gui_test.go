@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -346,5 +347,41 @@ func TestGUIApprovedIconDecodesFully(t *testing.T) {
 	_, _, _, centerAlpha := image.At(32, 32).RGBA()
 	if centerAlpha == 0 {
 		t.Fatal("icon artwork is unexpectedly transparent at center")
+	}
+}
+
+func TestGUIRequiresExplicitBrowserFallback(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux desktop only")
+	}
+	t.Setenv("DISPLAY", "")
+	t.Setenv("WAYLAND_DISPLAY", "")
+	command := newGUICmd()
+	command.SilenceUsage = true
+	command.SilenceErrors = true
+	err := command.Execute()
+	if err == nil || !strings.Contains(err.Error(), "mutate gui --browser") {
+		t.Fatalf("native GUI must fail without opening a browser: %v", err)
+	}
+}
+
+func TestNativeGUIFromCLIRequiresExecutableSibling(t *testing.T) {
+	directory := t.TempDir()
+	cli := filepath.Join(directory, "mutate")
+	if _, err := nativeGUIFromCLI(cli); err == nil {
+		t.Fatal("accepted missing native shell")
+	}
+	native := filepath.Join(directory, "mutate-gui")
+	if err := os.WriteFile(native, []byte("native"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := nativeGUIFromCLI(cli); err == nil {
+		t.Fatal("accepted non-executable native shell")
+	}
+	if err := os.Chmod(native, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := nativeGUIFromCLI(cli); err != nil || got != native {
+		t.Fatalf("valid native shell rejected: %q %v", got, err)
 	}
 }

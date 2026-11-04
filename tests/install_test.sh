@@ -109,6 +109,8 @@ case "$(uname -m)" in x86_64|amd64) ;; *) echo "SKIP: integration tests require 
 sh "$ROOT/install.sh" --release > "$TMP/release.log" 2>&1 ||
   { cat "$TMP/release.log"; die "release install"; }
 [ "$("$MUTATE_INSTALL_DIR/mutate")" = release-binary ] || die "release content"
+grep -q 'Native Wails GUI is not installed' "$TMP/release.log" ||
+  die "CLI-only installation must report missing native GUI"
 [ -L "$MUTATE_INSTALL_DIR/mut" ] || die "missing mut symlink"
 DESKTOP_ENTRY="$XDG_DATA_HOME/applications/mutate.desktop"
 [ -f "$DESKTOP_ENTRY" ] || die "desktop shortcut not registered by default"

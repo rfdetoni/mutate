@@ -6,10 +6,12 @@ packaging. The GUI is another entry point in the **same** CGO-free executable.
 
 ## Launch and boundaries
 `mutate gui` serves embedded static assets on `127.0.0.1` with a
-cryptographically random path-specific session token. Chromium `--app`
-is preferred for a native-looking window, with the system browser as
-fallback. `--no-browser` is supported for tests or remote/headless
-launch. The URL works only while the GUI process is running.
+cryptographically random path-specific session token. `mutate gui` requires
+the Wails `mutate-gui` executable beside the CLI, and exits with an actionable
+error before starting the local service if it is missing. A browser launches
+only when explicitly requested using `mutate gui --browser`; `--no-browser`
+serves the authenticated URL without launching a window, for headless/tests.
+The URL works only while the GUI process is running.
 
 All state-changing API requests use the session header and same-origin
 validation. Host is restricted to the bound loopback address. The
@@ -87,9 +89,10 @@ the Go motor cannot guarantee compatibility.
 ## Native desktop and source management
 The CGO-free `mutate` binary serves the authenticated session; optional
 `mutate-gui` is a Wails v3 GTK/WebKit shell installed beside it.
-`mutate gui` prefers the native window, falling back to browser only when
-the native build/runtime is unavailable. A native window exit shuts down
-its local server and temporary data. No browser brand appears in the UI.
+`mutate gui` launches the native Wails window only. Missing Wails binaries
+never trigger an implicit browser; `--browser` is the sole browser opt-in.
+A native window exit shuts down the server and temporary data.
+No browser brand appears in the UI.
 
 The Repositories section is discovery-only. Built-in AUR, official Arch
 and Debian Sources APIs are enabled initially. User-provided HTTPS JSON

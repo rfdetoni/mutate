@@ -263,7 +263,8 @@ continua embutida no motor. Durante a compilação do código-fonte, o
 instalador verifica e **instala automaticamente as bibliotecas GTK/WebKit
 ausentes** com APT, DNF, pacman ou zypper, solicitando autorização sudo
 somente quando necessária. Se não conseguir, a CLI continua funcionando,
-e o navegador fica como alternativa.
+mas `mutate gui` passa a informar a ausência do Wails sem abrir
+o Chrome automaticamente. Para usar navegador, execute `mutate gui --browser`.
 
 ```sh
 mutate gui                      # abre janela Wails quando instalada
@@ -305,8 +306,9 @@ diretório temporário privado (excluído ao encerrar); upload máximo de
 2 GiB. Compilação de código-fonte continua opt-in e isolada. Progresso
 indica apenas fases reais, sem percentuais fictícios. Quando o shell Wails estiver instalado, a interface abre como
 aplicativo desktop independente. Sem dependências GTK/WebKit de compilação,
-o navegador pode ser usado como alternativa. Para uso headless, utilize
-`--no-browser`.
+o navegador somente será aberto mediante `mutate gui --browser`.
+Sem o Wails instalado, `mutate gui` informa o erro em vez de abrir
+o Chrome. Para uso headless, utilize `--no-browser`.
 
 As regras de design e comportamento estão em [DESIGN.md](DESIGN.md) e
 [UX-CONTRACT.md](UX-CONTRACT.md).

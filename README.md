@@ -262,8 +262,9 @@ During source installation, the installer **automatically installs missing
 GTK/WebKit development packages** using APT, DNF, pacman or zypper. It prints
 the action and requests sudo authorization only if system changes are needed.
 If elevation or a supported package set is unavailable, the CLI still works
-and the browser fallback remains usable. On Arch, it never performs an unsafe
-partial `pacman -Sy` upgrade.
+but the default `mutate gui` command reports missing Wails rather than
+opening Chrome. Use `mutate gui --browser` to opt in to browser mode.
+On Arch, it never performs an unsafe partial `pacman -Sy` upgrade.
 
 ```sh
 mutate gui                      # native Wails window when the GTK desktop shell is installed
@@ -303,8 +304,8 @@ embedded and no CDNs are used. Files live in a private temporary workspace
 that is removed on shutdown; uploads are limited to 2 GiB. Source compilation
 remains opt-in and sandboxed. The GUI's progress shows real operation phases,
 not invented percentages. the native Wails shell opens an independent GTK window
-when built and installed. The browser fallback works without that shell. For
-headless use `--no-browser` and open the displayed local URL manually.
+when built and installed. Browser mode requires an explicit `--browser`.
+For headless use `--no-browser` and open the displayed local URL manually.
 
 Design tokens and behavior are documented in [DESIGN.md](DESIGN.md) and
 [UX-CONTRACT.md](UX-CONTRACT.md).

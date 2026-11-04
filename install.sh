@@ -341,12 +341,12 @@ build_desktop_shell() {
     [ "$ARCH" != unknown ] || return 0
     if ! have_native_gui_deps; then
         if ! install_gui_build_deps; then
-            warn "native GUI build dependencies unavailable; keeping CLI and browser fallback"
+            warn "native GUI build dependencies unavailable; CLI remains available, but browser mode requires 'mutate gui --browser'"
             return 0
         fi
     fi
     gui_variant=$(native_gui_variant) || {
-        warn "GTK/WebKit headers remain unavailable after dependency check; using browser fallback"
+        warn "GTK/WebKit headers remain unavailable; Wails cannot be built (browser mode only with 'mutate gui --browser')"
         return 0
     }
     gui_tags=
@@ -357,7 +357,7 @@ build_desktop_shell() {
         CGO_ENABLED=1 GOOS=linux GOTOOLCHAIN=local "$GO_BIN" build ${gui_tags:+"$gui_tags"} -trimpath -ldflags="-s -w" -o "$WORK/mutate-gui" .); then
         [ -s "$WORK/mutate-gui" ] && GUI_BINARY="$WORK/mutate-gui"
     else
-        warn "native Wails build failed; CLI remains available, browser fallback remains optional"
+        warn "native Wails build failed; CLI remains available, browser mode requires 'mutate gui --browser'"
     fi
 }
 
@@ -476,6 +476,11 @@ if [ -n "$GUI_BINARY" ]; then
 fi
 
 say "Installed: $DEST/mutate"
+if [ -x "$DEST/mutate-gui" ]; then
+    say "Native GUI: $DEST/mutate-gui"
+else
+    warn "Native Wails GUI is not installed at $DEST/mutate-gui; 'mutate gui' will not open Chrome automatically. Reinstall with --gui-deps or explicitly use 'mutate gui --browser'."
+fi
 say "Alias:     $DEST/mut (unless previously occupied)"
 case ":$PATH:" in
     *":$DEST:"*) ;;
