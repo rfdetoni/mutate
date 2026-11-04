@@ -21,6 +21,10 @@ go mod tidy
 CGO_ENABLED=1 go build -o ../mutate-gio .
 ```
 
+The installer checks for the Vulkan C header (`vulkan/vulkan.h`) as well as
+EGL/GLES and X11/Wayland. If only Vulkan headers are missing on Ubuntu,
+it installs `libvulkan-dev` without reinstalling the entire graphics stack.
+
 For X11-only systems, `-tags=nowayland` is supported; for Wayland-only
 systems, `-tags=nox11`. The installer detects which is available.
 The desktop and CLI binaries must be installed in the **same directory**.

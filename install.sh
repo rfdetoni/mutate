@@ -199,11 +199,24 @@ bootstrap_go() {
 }
 
 # Gio uses a native GPU window: no GTK, WebKit, Chrome or HTML runtime.
-# Probe the graphics stack; only request system packages if missing.
-gio_build_tags() {
+# A .pc check for EGL/GLES/X11 does not imply Vulkan headers are installed.
+gio_vulkan_headers() {
+    command -v cc >/dev/null 2>&1 || return 1
+    vulkan_flags=$(pkg-config --cflags vulkan 2>/dev/null || :)
+    # Flags are from pkg-config; intentionally pass each compiler argument.
+    # shellcheck disable=SC2086
+    printf '#include <vulkan/vulkan.h>\n' | cc $vulkan_flags -x c -fsyntax-only - >/dev/null 2>&1
+}
+gio_window_deps() {
     command -v gcc >/dev/null 2>&1 || return 1
     command -v pkg-config >/dev/null 2>&1 || return 1
     pkg-config --exists egl glesv2 2>/dev/null || return 1
+    pkg-config --exists x11 xcursor xkbcommon-x11 2>/dev/null ||
+        pkg-config --exists wayland-client 2>/dev/null
+}
+gio_build_tags() {
+    gio_window_deps || return 1
+    gio_vulkan_headers || return 1
     if pkg-config --exists x11 xcursor xkbcommon-x11 2>/dev/null; then
         if pkg-config --exists wayland-client 2>/dev/null; then
             printf '%s\n' default
@@ -241,29 +254,34 @@ install_gui_build_deps() {
         return 1
     }
     if command -v apt-get >/dev/null 2>&1; then
-        say "Installing missing Gio/X11/Wayland development dependencies with APT..."
-        gui_root apt-get install -y --no-install-recommends build-essential pkg-config \
-            libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev \
-            libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev || return 1
+        if gio_window_deps && ! gio_vulkan_headers; then
+            say "Installing missing Vulkan development headers (libvulkan-dev)..."
+            gui_root apt-get install -y --no-install-recommends libvulkan-dev || return 1
+        else
+            say "Installing missing Gio/X11/Wayland/Vulkan development dependencies with APT..."
+            gui_root apt-get install -y --no-install-recommends build-essential pkg-config \
+                libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev \
+                libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev || return 1
+        fi
     elif command -v dnf5 >/dev/null 2>&1; then
         gui_root dnf5 install -y gcc pkgconf-pkg-config wayland-devel libX11-devel \
-            libxkbcommon-x11-devel mesa-libGLES-devel mesa-libEGL-devel libXcursor-devel libffi-devel || return 1
+            libxkbcommon-x11-devel mesa-libGLES-devel mesa-libEGL-devel libXcursor-devel libffi-devel vulkan-headers || return 1
     elif command -v dnf >/dev/null 2>&1; then
         gui_root dnf install -y gcc pkgconf-pkg-config wayland-devel libX11-devel \
-            libxkbcommon-x11-devel mesa-libGLES-devel mesa-libEGL-devel libXcursor-devel libffi-devel || return 1
+            libxkbcommon-x11-devel mesa-libGLES-devel mesa-libEGL-devel libXcursor-devel libffi-devel vulkan-headers || return 1
     elif command -v pacman >/dev/null 2>&1; then
         # No unsafe partial Arch upgrade.
         gui_root pacman -S --needed --noconfirm base-devel pkgconf wayland libx11 \
-            libxkbcommon mesa libxcursor libffi || return 1
+            libxkbcommon mesa libxcursor libffi vulkan-headers || return 1
     elif command -v zypper >/dev/null 2>&1; then
         gui_root zypper --non-interactive install gcc pkg-config wayland-devel libX11-devel \
-            libxkbcommon-devel Mesa-libGLESv2-devel Mesa-libEGL-devel libXcursor-devel libffi-devel || return 1
+            libxkbcommon-devel Mesa-libGLESv2-devel Mesa-libEGL-devel libXcursor-devel libffi-devel vulkan-headers || return 1
     else
         warn "no supported package manager for Gio graphic build dependencies"
         return 1
     fi
     gio_build_tags >/dev/null || {
-        warn "Gio graphics stack remains incomplete (EGL/GLES with X11 or Wayland)"
+        warn "Gio graphics stack remains incomplete (EGL/GLES, X11/Wayland, or Vulkan headers)"
         return 1
     }
 }
