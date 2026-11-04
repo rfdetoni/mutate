@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"gioui.org/app"
+	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -30,18 +31,23 @@ import (
 //go:embed icon.png
 var approvedIconPNG []byte
 
+// Gio owns the desktop theme. The browser-only compatibility UI keeps its own CSS.
 var (
-	canvas       = color.NRGBA{R: 243, G: 244, B: 246, A: 255}
-	white        = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-	mutedSurface = color.NRGBA{R: 248, G: 249, B: 250, A: 255}
-	line         = color.NRGBA{R: 225, G: 228, B: 232, A: 255}
-	ink          = color.NRGBA{R: 32, G: 35, B: 42, A: 255}
-	softInk      = color.NRGBA{R: 82, G: 89, B: 101, A: 255}
-	mutedInk     = color.NRGBA{R: 116, G: 123, B: 134, A: 255}
-	violet       = color.NRGBA{R: 103, G: 84, B: 174, A: 255}
-	violetLight  = color.NRGBA{R: 241, G: 238, B: 249, A: 255}
-	positive     = color.NRGBA{R: 38, G: 123, B: 85, A: 255}
-	negative     = color.NRGBA{R: 178, G: 59, B: 69, A: 255}
+	canvas         = color.NRGBA{R: 25, G: 28, B: 34, A: 255}
+	white          = color.NRGBA{R: 250, G: 251, B: 255, A: 255}
+	appSurface     = color.NRGBA{R: 30, G: 34, B: 42, A: 255}
+	mutedSurface   = color.NRGBA{R: 34, G: 39, B: 48, A: 255}
+	panelSurface   = color.NRGBA{R: 40, G: 45, B: 54, A: 255}
+	line           = color.NRGBA{R: 60, G: 67, B: 79, A: 255}
+	ink            = color.NRGBA{R: 237, G: 241, B: 248, A: 255}
+	softInk        = color.NRGBA{R: 180, G: 189, B: 203, A: 255}
+	mutedInk       = color.NRGBA{R: 145, G: 155, B: 171, A: 255}
+	violet         = color.NRGBA{R: 154, G: 139, B: 249, A: 255}
+	violetLight    = color.NRGBA{R: 58, G: 49, B: 87, A: 255}
+	violetButton   = color.NRGBA{R: 101, G: 81, B: 183, A: 255}
+	positive       = color.NRGBA{R: 66, G: 185, B: 128, A: 255}
+	positiveButton = color.NRGBA{R: 27, G: 114, B: 79, A: 255}
+	negative       = color.NRGBA{R: 244, G: 115, B: 130, A: 255}
 )
 
 var sections = []string{"Converter", "Biblioteca", "Repositórios", "Inspecionar", "Instalar", "Histórico", "Configurações"}
@@ -158,8 +164,8 @@ func runWindow(api *client) error {
 		resolve: widget.Bool{Value: true}, format: widget.Enum{Value: "deb"},
 	}
 	u.th.Palette.Fg = ink
-	u.th.Palette.Bg = white
-	u.th.Palette.ContrastBg = violet
+	u.th.Palette.Bg = appSurface
+	u.th.Palette.ContrastBg = violetButton
 	u.th.Palette.ContrastFg = white
 	u.path.SingleLine = true
 	u.searchQuery.SingleLine = true
@@ -227,7 +233,7 @@ func (u *screen) runTask(label string, fn func() (func(*screen), error)) {
 	go func() { apply, err := fn(); u.deliver(response{apply: apply, err: err, label: label}) }()
 }
 func (u *screen) poll() {
-	ticker := time.NewTicker(950 * time.Millisecond)
+	ticker := time.NewTicker(2500 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
@@ -425,34 +431,58 @@ func (u *screen) button(gtx layout.Context, b *widget.Clickable, name string, bg
 	style.Background = bg
 	style.Color = colorText
 	style.TextSize = unit.Sp(13)
-	style.CornerRadius = unit.Dp(7)
+	style.CornerRadius = unit.Dp(9)
 	style.Inset = layout.Inset{Top: unit.Dp(10), Bottom: unit.Dp(10), Left: unit.Dp(14), Right: unit.Dp(14)}
 	return style.Layout(gtx)
 }
 func (u *screen) field(gtx layout.Context, ed *widget.Editor, hint string) layout.Dimensions {
-	return widget.Border{Color: line, CornerRadius: unit.Dp(7), Width: unit.Dp(1)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return surface(gtx, white, 7, func(gtx layout.Context) layout.Dimensions {
-			return layout.UniformInset(unit.Dp(9)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+	return widget.Border{Color: line, CornerRadius: unit.Dp(8), Width: unit.Dp(1)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return surface(gtx, panelSurface, 8, func(gtx layout.Context) layout.Dimensions {
+			return layout.UniformInset(unit.Dp(10)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 				style := material.Editor(u.th, ed, hint)
 				style.TextSize = unit.Sp(13)
+				style.Color = ink
+				style.HintColor = mutedInk
+				style.SelectionColor = violetLight
 				return style.Layout(gtx)
 			})
 		})
 	})
 }
 func (u *screen) card(gtx layout.Context, child layout.Widget) layout.Dimensions {
-	return widget.Border{Color: line, CornerRadius: unit.Dp(8), Width: unit.Dp(1)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return surface(gtx, white, 8, func(gtx layout.Context) layout.Dimensions { return layout.UniformInset(unit.Dp(20)).Layout(gtx, child) })
+	return widget.Border{Color: line, CornerRadius: unit.Dp(10), Width: unit.Dp(1)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return surface(gtx, appSurface, 10, func(gtx layout.Context) layout.Dimensions {
+			return layout.UniformInset(unit.Dp(20)).Layout(gtx, child)
+		})
 	})
 }
+
+// Package cards use available workspace width instead of collapsing to the
+// width of their longest label, while remaining readable on wide monitors.
+func (u *screen) workspaceCard(gtx layout.Context, child layout.Widget) layout.Dimensions {
+	width := gtx.Constraints.Max.X
+	if max := gtx.Dp(680); width > max {
+		width = max
+	}
+	gtx.Constraints.Min.X = width
+	gtx.Constraints.Max.X = width
+	return u.card(gtx, child)
+}
 func (u *screen) note(gtx layout.Context, txt string, accent color.NRGBA) layout.Dimensions {
-	return surface(gtx, mutedSurface, 7, func(gtx layout.Context) layout.Dimensions {
-		return layout.UniformInset(unit.Dp(12)).Layout(gtx, func(gtx layout.Context) layout.Dimensions { return u.label(gtx, txt, unit.Sp(13), accent) })
+	return widget.Border{Color: line, CornerRadius: unit.Dp(8), Width: unit.Dp(1)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return surface(gtx, panelSurface, 8, func(gtx layout.Context) layout.Dimensions {
+			return layout.UniformInset(unit.Dp(12)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return u.label(gtx, txt, unit.Sp(13), accent)
+			})
+		})
 	})
 }
 func (u *screen) layout(gtx layout.Context) layout.Dimensions {
 	paint.Fill(gtx.Ops, canvas)
-	return surface(gtx, white, 0, func(gtx layout.Context) layout.Dimensions {
+	// Set an idle cursor at the window level; nested editors and buttons
+	// remain free to override it with their own pointer shapes.
+	pointer.CursorDefault.Add(gtx.Ops)
+	return surface(gtx, appSurface, 0, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.topbar(gtx) }),
 			layout.Rigid(strip),
@@ -463,7 +493,7 @@ func (u *screen) layout(gtx layout.Context) layout.Dimensions {
 						return u.sidebar(gtx)
 					}),
 					layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-						return surface(gtx, white, 0, func(gtx layout.Context) layout.Dimensions {
+						return surface(gtx, canvas, 0, func(gtx layout.Context) layout.Dimensions {
 							return material.List(u.th, &u.bodyList).Layout(gtx, 1, func(gtx layout.Context, _ int) layout.Dimensions {
 								return layout.UniformInset(unit.Dp(28)).Layout(gtx, u.mainPanel)
 							})
@@ -524,7 +554,7 @@ func (u *screen) sidebar(gtx layout.Context) layout.Dimensions {
 					bg, fg := mutedSurface, softInk
 					if u.view == i {
 						bg = violetLight
-						fg = violet
+						fg = white
 					}
 					return u.button(gtx, &u.nav[i], name, bg, fg)
 				}))
@@ -591,7 +621,7 @@ func (u *screen) packagePanel(gtx layout.Context) layout.Dimensions {
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.header(gtx, titles[u.view], intro[u.view]) }),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(24)) }),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return u.card(gtx, func(gtx layout.Context) layout.Dimensions {
+			return u.workspaceCard(gtx, func(gtx layout.Context) layout.Dimensions {
 				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						return u.label(gtx, "SELEÇÃO DE ARQUIVO", unit.Sp(10), violet)
@@ -613,7 +643,7 @@ func (u *screen) packagePanel(gtx layout.Context) layout.Dimensions {
 						if u.pick.Clicked(gtx) {
 							u.pickFile()
 						}
-						return u.button(gtx, &u.pick, "Selecionar pacote…", violet, white)
+						return u.button(gtx, &u.pick, "Selecionar pacote…", violetButton, white)
 					}),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(16)) }),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -628,7 +658,7 @@ func (u *screen) packagePanel(gtx layout.Context) layout.Dimensions {
 						if u.filePathOpen.Clicked(gtx) {
 							u.uploadPath()
 						}
-						return u.button(gtx, &u.filePathOpen, "Abrir caminho", violetLight, violet)
+						return u.button(gtx, &u.filePathOpen, "Abrir caminho", panelSurface, ink)
 					}),
 				)
 			})
@@ -638,7 +668,7 @@ func (u *screen) packagePanel(gtx layout.Context) layout.Dimensions {
 	)
 }
 func (u *screen) activityPanel(gtx layout.Context) layout.Dimensions {
-	return u.card(gtx, func(gtx layout.Context) layout.Dimensions {
+	return u.workspaceCard(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.label(gtx, "ATIVIDADE", unit.Sp(10), mutedInk) }),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(10)) }),
@@ -668,7 +698,7 @@ func (u *screen) activityPanel(gtx layout.Context) layout.Dimensions {
 					if u.download.Clicked(gtx) {
 						u.saveOutput(u.state.Job.OutputID, u.state.Job.OutputName)
 					}
-					return u.button(gtx, &u.download, "Salvar pacote convertido…", violetLight, violet)
+					return u.button(gtx, &u.download, "Salvar pacote convertido…", panelSurface, ink)
 				})
 			}),
 		)
@@ -729,14 +759,14 @@ func (u *screen) inspector(gtx layout.Context) layout.Dimensions {
 								if u.inspect.Clicked(gtx) {
 									u.doAction("inspect")
 								}
-								return u.button(gtx, &u.inspect, "Inspecionar", violetLight, violet)
+								return u.button(gtx, &u.inspect, "Inspecionar", panelSurface, ink)
 							}),
 							layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(8)) }),
 							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 								if u.convert.Clicked(gtx) {
 									u.doAction("convert")
 								}
-								return u.button(gtx, &u.convert, "Converter", violet, white)
+								return u.button(gtx, &u.convert, "Converter", violetButton, white)
 							}),
 							layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(8)) }),
 							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -744,7 +774,7 @@ func (u *screen) inspector(gtx layout.Context) layout.Dimensions {
 									u.confirmation = "install"
 									u.confirmID = ""
 								}
-								return u.button(gtx, &u.install, "Instalar no sistema", positive, white)
+								return u.button(gtx, &u.install, "Instalar no sistema", positiveButton, white)
 							}),
 						)
 					}),
@@ -765,7 +795,7 @@ func (u *screen) libraryPanel(gtx layout.Context) layout.Dimensions {
 			if u.search.Clicked(gtx) {
 				u.catalogSearch()
 			}
-			return u.button(gtx, &u.search, "Pesquisar", violet, white)
+			return u.button(gtx, &u.search, "Pesquisar", violetButton, white)
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(18)) }),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -803,7 +833,7 @@ func (u *screen) libraryPanel(gtx layout.Context) layout.Dimensions {
 								u.confirmID = item.ID
 							}
 							return layout.Inset{Top: unit.Dp(9)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-								return u.button(gtx, btn, "Instalar aplicativo", positive, white)
+								return u.button(gtx, btn, "Instalar aplicativo", positiveButton, white)
 							})
 						}),
 					)
@@ -831,7 +861,7 @@ func (u *screen) repositoryPanel(gtx layout.Context) layout.Dimensions {
 			if u.refresh.Clicked(gtx) {
 				u.repositoryAction(http.MethodPost, "repositories/refresh", map[string]any{})
 			}
-			return u.button(gtx, &u.refresh, "Atualizar fontes", violetLight, violet)
+			return u.button(gtx, &u.refresh, "Atualizar fontes", panelSurface, ink)
 		}),
 	}
 	for _, source := range u.sources {
@@ -863,7 +893,7 @@ func (u *screen) repositoryPanel(gtx layout.Context) layout.Dimensions {
 							if s.Enabled {
 								text = "Desativar"
 							}
-							return u.button(gtx, btn, text, violetLight, violet)
+							return u.button(gtx, btn, text, panelSurface, ink)
 						}),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							if s.Builtin {
@@ -875,7 +905,7 @@ func (u *screen) repositoryPanel(gtx layout.Context) layout.Dimensions {
 								u.confirmation = "remove"
 								u.confirmID = s.ID
 							}
-							return layout.Inset{Top: unit.Dp(7)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions { return u.button(gtx, btn, "Remover", white, negative) })
+							return layout.Inset{Top: unit.Dp(7)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions { return u.button(gtx, btn, "Remover", panelSurface, negative) })
 						}),
 					)
 				})
@@ -898,7 +928,7 @@ func (u *screen) repositoryPanel(gtx layout.Context) layout.Dimensions {
 			if u.addRepository.Clicked(gtx) {
 				u.repositoryAction(http.MethodPost, "repositories", map[string]string{"name": u.repoName.Text(), "url": u.repoURL.Text()})
 			}
-			return u.button(gtx, &u.addRepository, "Adicionar fonte", violet, white)
+			return u.button(gtx, &u.addRepository, "Adicionar fonte", violetButton, white)
 		}),
 	)
 	return layout.Flex{Axis: layout.Vertical}.Layout(gtx, children...)
@@ -934,7 +964,7 @@ func (u *screen) historyPanel(gtx layout.Context) layout.Dimensions {
 								u.saveOutput(e.OutputID, e.OutputName)
 							}
 							return layout.Inset{Top: unit.Dp(10)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-								return u.button(gtx, btn, "Salvar resultado…", violetLight, violet)
+								return u.button(gtx, btn, "Salvar resultado…", panelSurface, ink)
 							})
 						}),
 					)
@@ -995,14 +1025,14 @@ func (u *screen) confirmPanel(gtx layout.Context) layout.Dimensions {
 							u.confirmation = ""
 							u.confirmID = ""
 						}
-						return u.button(gtx, &u.decline, "Cancelar", violetLight, violet)
+						return u.button(gtx, &u.decline, "Cancelar", panelSurface, ink)
 					}),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions { return layout.Spacer{Width: unit.Dp(10)}.Layout(gtx) }),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						if u.confirm.Clicked(gtx) {
 							u.confirmAction()
 						}
-						return u.button(gtx, &u.confirm, "Confirmar", positive, white)
+						return u.button(gtx, &u.confirm, "Confirmar", positiveButton, white)
 					}),
 				)
 			}),
