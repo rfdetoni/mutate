@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"image"
 	"image/color"
+	"image/png"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,6 +26,9 @@ import (
 	"gioui.org/widget/material"
 	"gioui.org/x/explorer"
 )
+
+//go:embed icon.png
+var approvedIconPNG []byte
 
 var (
 	canvas       = color.NRGBA{R: 243, G: 244, B: 246, A: 255}
@@ -106,6 +112,7 @@ type response struct {
 	polling bool
 }
 type screen struct {
+	icon                                                  paint.ImageOp
 	window                                                *app.Window
 	chooser                                               *explorer.Explorer
 	api                                                   *client
@@ -137,11 +144,15 @@ type screen struct {
 }
 
 func runWindow(api *client) error {
+	logo, err := png.Decode(bytes.NewReader(approvedIconPNG))
+	if err != nil {
+		return fmt.Errorf("ícone de aplicativo inválido: %w", err)
+	}
 	w := new(app.Window)
 	w.Option(app.Title("M.U.T.A.T.E."), app.Size(unit.Dp(1180), unit.Dp(780)), app.MinSize(unit.Dp(840), unit.Dp(600)))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	u := &screen{window: w, chooser: explorer.NewExplorer(w), api: api, ctx: ctx, cancel: cancel,
+	u := &screen{icon: paint.NewImageOp(logo), window: w, chooser: explorer.NewExplorer(w), api: api, ctx: ctx, cancel: cancel,
 		updates: make(chan response, 32), th: material.NewTheme(), repoButtons: make(map[string]*widget.Clickable),
 		catalogButtons: make(map[string]*widget.Clickable), historyButtons: make(map[string]*widget.Clickable),
 		resolve: widget.Bool{Value: true}, format: widget.Enum{Value: "deb"},
@@ -474,9 +485,8 @@ func (u *screen) topbar(gtx layout.Context) layout.Dimensions {
 	return layout.Inset{Top: unit.Dp(15), Bottom: unit.Dp(15), Left: unit.Dp(24), Right: unit.Dp(24)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Alignment: layout.Middle}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return surface(gtx, violetLight, 7, func(gtx layout.Context) layout.Dimensions {
-					return layout.UniformInset(unit.Dp(7)).Layout(gtx, func(gtx layout.Context) layout.Dimensions { return u.label(gtx, "↻", unit.Sp(23), violet) })
-				})
+				gtx.Constraints = layout.Exact(image.Pt(gtx.Dp(35), gtx.Dp(35)))
+				return widget.Image{Src: u.icon, Fit: widget.Contain}.Layout(gtx)
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return layout.Inset{Left: unit.Dp(12)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions { return u.label(gtx, "M.U.T.A.T.E.", unit.Sp(16), ink) })
