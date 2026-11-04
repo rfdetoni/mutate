@@ -42,14 +42,18 @@ without a release, the installer builds them from source.
 ## Native UX
 
 The UI keeps the approved compact three-column layout with a graphite/dark palette,
-muted gray surfaces, high-contrast text and violet accents. The center package\nchooser and activity modules expand to the full available workspace width. Session polling is reduced to
+muted gray surfaces, high-contrast text and violet accents. The center package
+chooser and activity modules expand to the full available workspace width. Session polling is reduced to
 2.5 seconds, and the idle window sets the default cursor; this is not a
 substitute for testing the actual pointer behavior on all Linux desktops.
 Seven sections: Converter, Biblioteca, Repositórios, Inspecionar, Instalar,
 Histórico, Configurações. Native file chooser and save dialog use XDG Portals,
 with an explicit file-path fallback; actions are asynchronous and show real
 operation status and errors. Installation always requires confirmation.
-Package workflows hide the central scrollbar while retaining scrolling when\ncontent does not fit. Long results lists and the inspector retain scrollbars\nwhen needed.
+Converter, Inspecionar and Instalar use a static central workspace: wheel and
+touchpad gestures no longer scroll the form. Shorter windows use denser spacing.
+Library, Repositories, History and Settings keep scrolling. The inspector
+continues to scroll independently when necessary.
 
 The legacy browser assets remain embedded in the CLI strictly as an
 **opt-in** compatibility interface.

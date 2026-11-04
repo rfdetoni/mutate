@@ -147,6 +147,7 @@ type screen struct {
 	problem                                               string
 	confirmation                                          string
 	confirmID                                             string
+	compactWorkspace                                      bool
 }
 
 func runWindow(api *client) error {
@@ -460,19 +461,54 @@ func (u *screen) field(gtx layout.Context, ed *widget.Editor, hint string) layou
 		})
 	})
 }
-func (u *screen) card(gtx layout.Context, child layout.Widget) layout.Dimensions {
+func (u *screen) cardInset(gtx layout.Context, padding unit.Dp, child layout.Widget) layout.Dimensions {
 	return widget.Border{Color: line, CornerRadius: unit.Dp(10), Width: unit.Dp(1)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return surface(gtx, appSurface, 10, func(gtx layout.Context) layout.Dimensions {
-			return layout.UniformInset(unit.Dp(20)).Layout(gtx, child)
+			return layout.UniformInset(padding).Layout(gtx, child)
 		})
 	})
+}
+func (u *screen) card(gtx layout.Context, child layout.Widget) layout.Dimensions {
+	return u.cardInset(gtx, unit.Dp(20), child)
 }
 
 // Package cards fill the center workspace between its existing side gutters.
 // The child keeps natural-sized controls; surface() paints the entire card.
 func (u *screen) workspaceCard(gtx layout.Context, child layout.Widget) layout.Dimensions {
 	gtx.Constraints.Min.X = gtx.Constraints.Max.X
+	if u.compactWorkspace {
+		return u.cardInset(gtx, unit.Dp(14), child)
+	}
 	return u.card(gtx, child)
+}
+
+// Only long-form views own a list/scroll gesture. A scrollbar-less
+// layout.List still scrolls the package form on wheel/trackpad events.
+func staticPackageWorkspace(view int, confirmation string) bool {
+	return confirmation != "" || view == 0 || view == 3 || view == 4
+}
+
+func (u *screen) packageGap(gtx layout.Context, normal, compact unit.Dp) layout.Dimensions {
+	if u.compactWorkspace {
+		return gap(gtx, compact)
+	}
+	return gap(gtx, normal)
+}
+
+func (u *screen) workspaceContent(gtx layout.Context) layout.Dimensions {
+	if staticPackageWorkspace(u.view, u.confirmation) {
+		// The package form is static: no scrollable widget is registered.
+		u.compactWorkspace = gtx.Constraints.Max.Y < gtx.Dp(560)
+		inset := layout.Inset{Top: unit.Dp(18), Bottom: unit.Dp(12), Left: unit.Dp(28), Right: unit.Dp(28)}
+		if u.compactWorkspace {
+			inset = layout.Inset{Top: unit.Dp(12), Bottom: unit.Dp(8), Left: unit.Dp(20), Right: unit.Dp(20)}
+		}
+		return inset.Layout(gtx, u.mainPanel)
+	}
+	u.compactWorkspace = false
+	return material.List(u.th, &u.bodyList).Layout(gtx, 1, func(gtx layout.Context, _ int) layout.Dimensions {
+		return layout.UniformInset(unit.Dp(28)).Layout(gtx, u.mainPanel)
+	})
 }
 func (u *screen) note(gtx layout.Context, txt string, accent color.NRGBA) layout.Dimensions {
 	return widget.Border{Color: line, CornerRadius: unit.Dp(8), Width: unit.Dp(1)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
@@ -499,18 +535,7 @@ func (u *screen) layout(gtx layout.Context) layout.Dimensions {
 						return u.sidebar(gtx)
 					}),
 					layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-						return surface(gtx, canvas, 0, func(gtx layout.Context) layout.Dimensions {
-							content := func(gtx layout.Context, _ int) layout.Dimensions {
-								return layout.UniformInset(unit.Dp(28)).Layout(gtx, u.mainPanel)
-							}
-							// Package workflows have one compact panel, not a long list.
-							// Preserve wheel/trackpad scrolling when the window is short
-							// without showing a permanent central scrollbar.
-							if u.confirmation != "" || u.view == 0 || u.view == 3 || u.view == 4 {
-								return u.bodyList.List.Layout(gtx, 1, content)
-							}
-							return material.List(u.th, &u.bodyList).Layout(gtx, 1, content)
-						})
+						return surface(gtx, canvas, 0, u.workspaceContent)
 					}),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						if u.view > 0 && u.view < 3 || u.view > 4 {
@@ -609,7 +634,7 @@ func (u *screen) mainPanel(gtx layout.Context) layout.Dimensions {
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if u.waiting || u.state.Busy || u.message != "" || u.problem != "" {
-				return gap(gtx, unit.Dp(16))
+				return u.packageGap(gtx, unit.Dp(12), unit.Dp(7))
 			}
 			return layout.Dimensions{}
 		}),
@@ -632,14 +657,14 @@ func (u *screen) packagePanel(gtx layout.Context) layout.Dimensions {
 	intro := []string{"Selecione um pacote, confira os detalhes e escolha o formato de saída.", "", "", "Analise metadados, executáveis e bibliotecas do pacote.", "Converta para o formato do host antes de instalar com autorização."}
 	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.header(gtx, titles[u.view], intro[u.view]) }),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(24)) }),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.packageGap(gtx, unit.Dp(16), unit.Dp(10)) }),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return u.workspaceCard(gtx, func(gtx layout.Context) layout.Dimensions {
 				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						return u.label(gtx, "SELEÇÃO DE ARQUIVO", unit.Sp(10), violet)
 					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(12)) }),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.packageGap(gtx, unit.Dp(12), unit.Dp(8)) }),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						name := "Nenhum arquivo selecionado"
 						if u.state.Selected != nil {
@@ -647,26 +672,26 @@ func (u *screen) packagePanel(gtx layout.Context) layout.Dimensions {
 						}
 						return u.label(gtx, name, unit.Sp(16), ink)
 					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(7)) }),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.packageGap(gtx, unit.Dp(7), unit.Dp(5)) }),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						return u.label(gtx, "DEB, RPM, Arch, Alpine APK, AppImage e arquivos fonte", unit.Sp(12), softInk)
 					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(19)) }),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.packageGap(gtx, unit.Dp(19), unit.Dp(12)) }),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						if u.pick.Clicked(gtx) {
 							u.pickFile()
 						}
 						return u.button(gtx, &u.pick, "Selecionar pacote…", violetButton, white)
 					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(16)) }),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.packageGap(gtx, unit.Dp(16), unit.Dp(10)) }),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						return u.label(gtx, "OU INFORME O CAMINHO DO ARQUIVO", unit.Sp(10), mutedInk)
 					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(6)) }),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.packageGap(gtx, unit.Dp(6), unit.Dp(4)) }),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						return u.field(gtx, &u.path, "/home/usuario/Downloads/pacote.deb")
 					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(10)) }),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.packageGap(gtx, unit.Dp(10), unit.Dp(6)) }),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						if u.filePathOpen.Clicked(gtx) {
 							u.uploadPath()
@@ -676,7 +701,7 @@ func (u *screen) packagePanel(gtx layout.Context) layout.Dimensions {
 				)
 			})
 		}),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(20)) }),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.packageGap(gtx, unit.Dp(14), unit.Dp(8)) }),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.activityPanel(gtx) }),
 	)
 }
@@ -684,7 +709,7 @@ func (u *screen) activityPanel(gtx layout.Context) layout.Dimensions {
 	return u.workspaceCard(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.label(gtx, "ATIVIDADE", unit.Sp(10), mutedInk) }),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(10)) }),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.packageGap(gtx, unit.Dp(10), unit.Dp(6)) }),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				if u.state.Job == nil {
 					return u.label(gtx, "Pronto para analisar um pacote", unit.Sp(15), ink)

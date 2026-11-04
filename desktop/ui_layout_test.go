@@ -49,3 +49,28 @@ func TestWorkspaceCardUsesEntireAvailableWidth(t *testing.T) {
 		t.Fatalf("card width=%d, want %d", dims.Size.X, gtx.Constraints.Max.X)
 	}
 }
+
+// Package workflows must not register any scroll widget. Only long lists do.
+func TestStaticPackageWorkspaceRouting(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		view int
+		confirmation string
+		want bool
+	}{
+		{"converter", 0, "", true},
+		{"biblioteca", 1, "", false},
+		{"repositorios", 2, "", false},
+		{"inspecionar", 3, "", true},
+		{"instalar", 4, "", true},
+		{"historico", 5, "", false},
+		{"configuracoes", 6, "", false},
+		{"confirmacao", 1, "install", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := staticPackageWorkspace(tc.view, tc.confirmation); got != tc.want {
+				t.Fatalf("staticPackageWorkspace(%d, %q) = %v, want %v", tc.view, tc.confirmation, got, tc.want)
+			}
+		})
+	}
+}
