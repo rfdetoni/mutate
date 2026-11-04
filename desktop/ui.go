@@ -366,7 +366,11 @@ func (u *screen) catalogSearch() {
 		if err := u.api.get(u.ctx, "catalog?q="+url.QueryEscape(q), &result); err != nil {
 			return nil, err
 		}
-		return func(u *screen) { u.apps = result.Apps; u.warnings = result.Warnings }, nil
+		return func(u *screen) {
+			u.apps = result.Apps
+			u.warnings = result.Warnings
+			u.bodyList.Position = layout.Position{}
+		}, nil
 	})
 }
 func (u *screen) repositoryAction(method, path string, payload any) {
@@ -821,20 +825,110 @@ func (u *screen) inspector(gtx layout.Context) layout.Dimensions {
 		})
 	})
 }
-func (u *screen) libraryPanel(gtx layout.Context) layout.Dimensions {
-	children := []layout.FlexChild{
+// The library is a full-width workspace: search and result rows use the same
+// available column width, with native actions aligned to the far right.
+func (u *screen) librarySearchField(gtx layout.Context) layout.Dimensions {
+	return widget.Border{Color: line, CornerRadius: unit.Dp(8), Width: unit.Dp(1)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return surface(gtx, panelSurface, 8, func(gtx layout.Context) layout.Dimensions {
+			return layout.UniformInset(unit.Dp(10)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				// The entire search field receives focus, not only the text-width area.
+				gtx.Constraints.Min.X = gtx.Constraints.Max.X
+				style := material.Editor(u.th, &u.searchQuery, "Nome do aplicativo")
+				style.TextSize = unit.Sp(13)
+				style.Color = ink
+				style.HintColor = mutedInk
+				style.SelectionColor = violetLight
+				return style.Layout(gtx)
+			})
+		})
+	})
+}
+
+func (u *screen) librarySearchBar(gtx layout.Context) layout.Dimensions {
+	return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+		layout.Flexed(1, u.librarySearchField),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return u.header(gtx, "Biblioteca de aplicativos", "Pesquise repositórios nativos e catálogos de descoberta.")
+			return layout.Spacer{Width: unit.Dp(12)}.Layout(gtx)
 		}),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(22)) }),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.field(gtx, &u.searchQuery, "Nome do aplicativo") }),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(10)) }),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if u.search.Clicked(gtx) {
 				u.catalogSearch()
 			}
 			return u.button(gtx, &u.search, "Pesquisar", violetButton, white)
 		}),
+	)
+}
+
+func (u *screen) libraryResultCard(gtx layout.Context, item catalogApp) layout.Dimensions {
+	return u.workspaceCard(gtx, func(gtx layout.Context) layout.Dimensions {
+		title := item.Name
+		if item.Version != "" {
+			title += "  ·  " + item.Version
+		}
+		info := func(gtx layout.Context) layout.Dimensions {
+			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return u.label(gtx, title, unit.Sp(16), ink)
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					if item.Description == "" {
+						return layout.Dimensions{}
+					}
+					return layout.Inset{Top: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return u.label(gtx, item.Description, unit.Sp(12), softInk)
+					})
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return layout.Inset{Top: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return u.label(gtx, "Origem: "+item.Source, unit.Sp(11), mutedInk)
+					})
+				}),
+			)
+		}
+		action := func(gtx layout.Context) layout.Dimensions {
+			if !item.Native || !item.Installable {
+				return layout.Dimensions{}
+			}
+			btn := u.cachedButton(u.catalogButtons, item.ID)
+			if btn.Clicked(gtx) {
+				u.confirmation = "catalog"
+				u.confirmID = item.ID
+			}
+			return u.button(gtx, btn, "Instalar aplicativo", positiveButton, white)
+		}
+		if gtx.Constraints.Max.X < gtx.Dp(520) {
+			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+				layout.Rigid(info),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					if !item.Native || !item.Installable {
+						return layout.Dimensions{}
+					}
+					return layout.Inset{Top: unit.Dp(12)}.Layout(gtx, action)
+				}),
+			)
+		}
+		return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+			layout.Flexed(1, info),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				if !item.Native || !item.Installable {
+					return layout.Dimensions{}
+				}
+				return layout.Inset{Left: unit.Dp(24)}.Layout(gtx, action)
+			}),
+		)
+	})
+}
+
+func (u *screen) libraryPanel(gtx layout.Context) layout.Dimensions {
+	// The parent list does not force child width. Request the full viewport
+	// explicitly so both the search bar and every package row fill the center.
+	gtx.Constraints.Min.X = gtx.Constraints.Max.X
+	children := []layout.FlexChild{
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return u.header(gtx, "Biblioteca de aplicativos", "Pesquise repositórios nativos e catálogos de descoberta.")
+		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(18)) }),
+		layout.Rigid(u.librarySearchBar),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(18)) }),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return u.label(gtx, fmt.Sprintf("%d resultados", len(u.apps)), unit.Sp(12), softInk)
@@ -842,40 +936,18 @@ func (u *screen) libraryPanel(gtx layout.Context) layout.Dimensions {
 	}
 	for _, w := range u.warnings {
 		warning := w
-		children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions { return u.note(gtx, warning, mutedInk) }))
-	}
-	for _, a := range u.apps {
-		item := a
 		children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.Inset{Top: unit.Dp(12)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return u.card(gtx, func(gtx layout.Context) layout.Dimensions {
-					return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return u.label(gtx, item.Name+"  ·  "+item.Version, unit.Sp(16), ink)
-						}),
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(6)) }),
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return u.label(gtx, item.Description, unit.Sp(12), softInk)
-						}),
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(8)) }),
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return u.label(gtx, "Origem: "+item.Source, unit.Sp(11), mutedInk)
-						}),
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							if !item.Native || !item.Installable {
-								return layout.Dimensions{}
-							}
-							btn := u.cachedButton(u.catalogButtons, item.ID)
-							if btn.Clicked(gtx) {
-								u.confirmation = "catalog"
-								u.confirmID = item.ID
-							}
-							return layout.Inset{Top: unit.Dp(9)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-								return u.button(gtx, btn, "Instalar aplicativo", positiveButton, white)
-							})
-						}),
-					)
-				})
+			gtx.Constraints.Min.X = gtx.Constraints.Max.X
+			return layout.Inset{Top: unit.Dp(10)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return u.note(gtx, warning, mutedInk)
+			})
+		}))
+	}
+	for _, app := range u.apps {
+		item := app
+		children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{Top: unit.Dp(10)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return u.libraryResultCard(gtx, item)
 			})
 		}))
 	}

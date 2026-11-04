@@ -75,10 +75,12 @@ operation. The legacy browser-only interface retains its native HTML dialog and 
 - `history-list`: session-only; downloadable converted outputs.
 
 ## Application library
-The Library section uses the same full-width main content as History and
-Settings. Search is a single horizontal row above an editorial-style list
-separated by hairline dividers, not a grid of inflated app cards. Every
-row shows application name, short description, origin (native repository
+The Library uses the full center workspace width. The search input grows
+horizontally alongside the search action; each result is a full-width
+editorial row, with package information to the left and its install action
+aligned right where space permits. Narrow windows stack the action below
+the description instead of clipping it. Results remain vertically scrollable.
+Every row shows the application name, description, origin (native repository
 versus community AUR), candidate version and a contextual action. Native
 packages use the existing positive/neutral tokens; AUR remains visually
 subordinate and does not pretend to be an official trusted repository.

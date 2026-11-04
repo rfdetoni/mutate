@@ -7,6 +7,8 @@ import (
 
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/widget"
+	"gioui.org/widget/material"
 	"gioui.org/unit"
 )
 
@@ -72,5 +74,25 @@ func TestStaticPackageWorkspaceRouting(t *testing.T) {
 				t.Fatalf("staticPackageWorkspace(%d, %q) = %v, want %v", tc.view, tc.confirmation, got, tc.want)
 			}
 		})
+	}
+}
+
+// Both compact and wide library cards must fill the available center column.
+// A blank package version must not generate an extra version separator.
+func TestLibraryResultCardUsesAvailableWidth(t *testing.T) {
+	for _, width := range []int{440, 900} {
+		gtx := layout.Context{
+			Ops: new(op.Ops),
+			Metric: unit.Metric{PxPerDp: 1, PxPerSp: 1},
+			Constraints: layout.Constraints{Max: image.Pt(width, 600)},
+		}
+		u := &screen{th: material.NewTheme(), catalogButtons: map[string]*widget.Clickable{}}
+		dims := u.libraryResultCard(gtx, catalogApp{
+			ID: "test-package", Name: "Firefox", Source: "APT",
+			Description: "Navegador de internet",
+		})
+		if dims.Size.X != width {
+			t.Errorf("width %d: result card is %dpx; want %dpx", width, dims.Size.X, width)
+		}
 	}
 }
