@@ -2,36 +2,40 @@
 
 ## North star
 A compact Linux desktop utility, not a marketing website. The approved
-reference is the flat three-column package installer mockup: restrained
-violet focus color, white surfaces, thin gray dividers, a generous but
-unembellished drag-and-drop zone, and a persistent package inspector.
+reference is the compact three-column package installer: restrained
+violet focus color, layered charcoal surfaces, subtle gray dividers, a generous
+package chooser, and a persistent package inspector.
 Avoid glass, gradients, neon, heavy shadows, faux progress and large cards.
 
 ## Token ownership
 **Native runtime canonical source:** `desktop/ui.go` palette values and layout helpers.
-The legacy optional browser UI retains the CSS tokens in `cmd/mutate/ui/style.css`.
-Keep both consistent when changing approved design values.
+The optional browser UI retains independent light CSS tokens in `cmd/mutate/ui/style.css`.
+Do not accidentally apply desktop-only theme changes to the browser compatibility mode.
 
 | Role | Runtime token | Value |
 |---|---|---|
-| Canvas | `--canvas` | `#f3f4f6` |
-| Surface | `--surface` | `#ffffff` |
-| Subtle surface | `--surface-muted` | `#f8f9fa` |
-| Primary text | `--ink` | `#20232a` |
-| Secondary | `--ink-soft` | `#525965` |
-| Muted | `--ink-muted` | `#747b86` |
-| Divider | `--line` | `#e1e4e8` |
-| Accent | `--accent` | `#6754ae` |
-| Accent background | `--accent-light` | `#f1eef9` |
-| Positive state | `--positive` | `#267b55` |
-| Error state | `--negative` | `#b23b45` |
-| Control radius | `--radius` | `7px` |
+| Canvas | `canvas` | `#191c22` |
+| Surface | `appSurface` | `#1e222a` |
+| Sidebar / inspector | `mutedSurface` | `#222730` |
+| Input / notice | `panelSurface` | `#282d36` |
+| Primary text | `ink` | `#edf1f8` |
+| Secondary | `softInk` | `#b4bdcb` |
+| Muted | `mutedInk` | `#919bab` |
+| Divider | `line` | `#3c434f` |
+| Accent text | `violet` | `#9a8bf9` |
+| Accent button | `violetButton` | `#6551b7` |
+| Accent background | `violetLight` | `#3a3157` |
+| Positive text | `positive` | `#42b980` |
+| Positive button | `positiveButton` | `#1b724f` |
+| Error state | `negative` | `#f47382` |
+| Control radius | Gio widget styles | `8–10dp` |
 
 ## Layout and density
 Desktop: application titlebar (69px), narrow 182px navigation, flexible
 drop-zone/content area, fixed 332px inspector. Gio desktop has a minimum width of 840dp. Package workflows show a
 persistent native inspector on the right; other workflows use a wide panel.
 At narrow sizes, scrolling is confined to content panes, not the shell. Full-width drop-zone is visually dominant.
+Package chooser and activity cards grow with the center workspace up to 680dp.
 Activity state is a compact bordered module, not a dashboard full of cards.
 The desktop frame must never exceed the viewport once outer gutters are included.
 The sidebar, main content and inspector scroll independently only when their
@@ -49,7 +53,9 @@ No downloadable fonts or branded font distribution.
 
 ## Motion, states and accessibility
 Motion only communicates current work (indeterminate progress while a job
-is truly running); no invented percentages. Focus rings use the violet
+is truly running); no invented percentages. The native window sets the default
+pointer cursor while idle, and refreshes session state every 2.5 seconds to
+avoid unnecessary work when no action is taking place. Focus rings use the violet
 accent. Disabled buttons look disabled. Errors stay inside the activity
 area and preserve the selected file. Respect reduced motion, keyboard
 focus, and 200% zoom. Install confirmation uses a Gio confirmation state before invoking the privileged

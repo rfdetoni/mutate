@@ -41,7 +41,11 @@ without a release, the installer builds them from source.
 
 ## Native UX
 
-The UI keeps the approved compact three-column layout and violet palette.
+The UI keeps the approved compact three-column layout with a graphite/dark palette,
+muted gray surfaces, high-contrast text and violet accents. The center package
+chooser and activity modules expand up to 680dp. Session polling is reduced to
+2.5 seconds, and the idle window sets the default cursor; this is not a
+substitute for testing the actual pointer behavior on all Linux desktops.
 Seven sections: Converter, Biblioteca, Repositórios, Inspecionar, Instalar,
 Histórico, Configurações. Native file chooser and save dialog use XDG Portals,
 with an explicit file-path fallback; actions are asynchronous and show real
