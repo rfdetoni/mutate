@@ -896,6 +896,14 @@ func (u *screen) libraryResultCard(gtx layout.Context, item catalogApp) layout.D
 						return u.label(gtx, "Origem: "+item.Source, unit.Sp(11), mutedInk)
 					})
 				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					if item.Installable {
+						return layout.Dimensions{}
+					}
+					return layout.Inset{Top: unit.Dp(5)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return u.label(gtx, "Somente consulta — baixe um pacote confiável e utilize Converter", unit.Sp(11), mutedInk)
+					})
+				}),
 			)
 		}
 		action := func(gtx layout.Context) layout.Dimensions {
@@ -1134,8 +1142,13 @@ func (u *screen) confirmPanel(gtx layout.Context) layout.Dimensions {
 		title = "Instalar no sistema?"
 		message = "O Mutate converterá o pacote e solicitará autorização do administrador. Scripts do pacote podem executar com privilégios elevados."
 	case "catalog":
-		title = "Instalar aplicativo do repositório?"
-		message = "O gerenciador nativo instalará o aplicativo e suas dependências. A autorização do sistema será solicitada."
+		if strings.HasPrefix(u.confirmID, "flatpak:flathub:") {
+			title = "Instalar aplicativo do Flathub?"
+			message = "O Flatpak baixará o aplicativo e suas dependências do Flathub oficial configurado no sistema. A instalação requer sua confirmação."
+		} else {
+			title = "Instalar aplicativo do repositório?"
+			message = "O gerenciador nativo instalará o aplicativo e suas dependências. A autorização do sistema será solicitada."
+		}
 	case "remove":
 		title = "Remover repositório?"
 		message = "A fonte personalizada deixará de aparecer nas pesquisas."

@@ -21,7 +21,10 @@ func (a *guiApp) handleCatalogSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 16*time.Second)
 	defer cancel()
-	type fpResult struct { apps []catalog.App; err error }
+	type fpResult struct {
+		apps []catalog.App
+		err  error
+	}
 	flatpakCh := make(chan fpResult, 1)
 	go func() {
 		if _, err := exec.LookPath("flatpak"); err != nil {
@@ -41,7 +44,9 @@ func (a *guiApp) handleCatalogSearch(w http.ResponseWriter, r *http.Request) {
 	fp := <-flatpakCh
 	if fp.err == nil {
 		count := 0
-		for count < len(result.Apps) && result.Apps[count].Native { count++ }
+		for count < len(result.Apps) && result.Apps[count].Native {
+			count++
+		}
 		all := make([]catalog.App, 0, len(result.Apps)+len(fp.apps))
 		all = append(all, result.Apps[:count]...)
 		all = append(all, fp.apps...)
@@ -142,20 +147,26 @@ func (a *guiApp) runCatalogInstall(entry catalog.App, id string) {
 
 // Flatpak downloads and verifies remote packages; no AUR/source scripts run.
 func installFlatpakCatalogPackage(appID string) error {
-	if !catalog.ValidFlatpakID(appID) { return fmt.Errorf("ID Flatpak inválido") }
+	if !catalog.ValidFlatpakID(appID) {
+		return fmt.Errorf("ID Flatpak inválido")
+	}
 	if _, err := exec.LookPath("flatpak"); err != nil {
 		return fmt.Errorf("Flatpak indisponível: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	scope, err := catalog.FlathubScope(ctx, nil)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	cmd := exec.CommandContext(ctx, "flatpak", "install", scope, "--assumeyes",
 		"--noninteractive", "--app", "flathub", appID)
 	var output cappedGUIBuffer
 	cmd.Stdout, cmd.Stderr = &output, &output
 	if err := cmd.Run(); err != nil {
-		if ctx.Err() != nil { return fmt.Errorf("tempo limite da instalação Flatpak excedido") }
+		if ctx.Err() != nil {
+			return fmt.Errorf("tempo limite da instalação Flatpak excedido")
+		}
 		return fmt.Errorf("instalação do Flathub: %s: %w", output.String(), err)
 	}
 	return nil
