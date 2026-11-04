@@ -410,13 +410,24 @@ func strip(gtx layout.Context) layout.Dimensions {
 	paint.FillShape(gtx.Ops, line, clip.Rect{Max: image.Pt(width, gtx.Dp(1))}.Op())
 	return layout.Dimensions{Size: image.Pt(width, gtx.Dp(1))}
 }
+// Gio Stack clears the minimum constraints of Stacked children, so painting
+// the Expanded child only to its measured size leaves an unpainted strip in
+// a full-width card. Record content first, then paint to the final constrained
+// size before replaying the child. Keep the child's natural width so buttons
+// and fields don't stretch across the entire package card.
 func surface(gtx layout.Context, bg color.NRGBA, radius int, child layout.Widget) layout.Dimensions {
-	return layout.Stack{}.Layout(gtx,
-		layout.Expanded(func(gtx layout.Context) layout.Dimensions {
-			size := gtx.Constraints.Min
-			paint.FillShape(gtx.Ops, bg, clip.RRect{Rect: image.Rectangle{Max: size}, NE: radius, NW: radius, SE: radius, SW: radius}.Op(gtx.Ops))
-			return layout.Dimensions{Size: size}
-		}), layout.Stacked(child))
+	contentContext := gtx
+	contentContext.Constraints.Min = image.Point{}
+	macro := op.Record(gtx.Ops)
+	dims := child(contentContext)
+	call := macro.Stop()
+	dims.Size = gtx.Constraints.Constrain(dims.Size)
+	paint.FillShape(gtx.Ops, bg, clip.RRect{
+		Rect: image.Rectangle{Max: dims.Size},
+		NE: radius, NW: radius, SE: radius, SW: radius,
+	}.Op(gtx.Ops))
+	call.Add(gtx.Ops)
+	return dims
 }
 func (u *screen) label(gtx layout.Context, s string, size unit.Sp, c color.NRGBA) layout.Dimensions {
 	l := material.Label(u.th, size, s)
@@ -457,15 +468,10 @@ func (u *screen) card(gtx layout.Context, child layout.Widget) layout.Dimensions
 	})
 }
 
-// Package cards use available workspace width instead of collapsing to the
-// width of their longest label, while remaining readable on wide monitors.
+// Package cards fill the center workspace between its existing side gutters.
+// The child keeps natural-sized controls; surface() paints the entire card.
 func (u *screen) workspaceCard(gtx layout.Context, child layout.Widget) layout.Dimensions {
-	width := gtx.Constraints.Max.X
-	if max := gtx.Dp(680); width > max {
-		width = max
-	}
-	gtx.Constraints.Min.X = width
-	gtx.Constraints.Max.X = width
+	gtx.Constraints.Min.X = gtx.Constraints.Max.X
 	return u.card(gtx, child)
 }
 func (u *screen) note(gtx layout.Context, txt string, accent color.NRGBA) layout.Dimensions {
@@ -494,9 +500,16 @@ func (u *screen) layout(gtx layout.Context) layout.Dimensions {
 					}),
 					layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 						return surface(gtx, canvas, 0, func(gtx layout.Context) layout.Dimensions {
-							return material.List(u.th, &u.bodyList).Layout(gtx, 1, func(gtx layout.Context, _ int) layout.Dimensions {
+							content := func(gtx layout.Context, _ int) layout.Dimensions {
 								return layout.UniformInset(unit.Dp(28)).Layout(gtx, u.mainPanel)
-							})
+							}
+							// Package workflows have one compact panel, not a long list.
+							// Preserve wheel/trackpad scrolling when the window is short
+							// without showing a permanent central scrollbar.
+							if u.confirmation != "" || u.view == 0 || u.view == 3 || u.view == 4 {
+								return u.bodyList.List.Layout(gtx, 1, content)
+							}
+							return material.List(u.th, &u.bodyList).Layout(gtx, 1, content)
 						})
 					}),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
