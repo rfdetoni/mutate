@@ -8,8 +8,9 @@ unembellished drag-and-drop zone, and a persistent package inspector.
 Avoid glass, gradients, neon, heavy shadows, faux progress and large cards.
 
 ## Token ownership
-**Runtime canonical source:** `cmd/mutate/ui/style.css` `:root` CSS variables.
-This document mirrors the accepted values and behavior; change both together.
+**Native runtime canonical source:** `desktop/ui.go` palette values and layout helpers.
+The legacy optional browser UI retains the CSS tokens in `cmd/mutate/ui/style.css`.
+Keep both consistent when changing approved design values.
 
 | Role | Runtime token | Value |
 |---|---|---|
@@ -28,9 +29,9 @@ This document mirrors the accepted values and behavior; change both together.
 
 ## Layout and density
 Desktop: application titlebar (69px), narrow 182px navigation, flexible
-drop-zone/content area, fixed 332px inspector. At 900px the inspector
-moves below the content; at 640px the navigation becomes a compact
-horizontal scroll row. Full-width drop-zone is visually dominant.
+drop-zone/content area, fixed 332px inspector. Gio desktop has a minimum width of 840dp. Package workflows show a
+persistent native inspector on the right; other workflows use a wide panel.
+At narrow sizes, scrolling is confined to content panes, not the shell. Full-width drop-zone is visually dominant.
 Activity state is a compact bordered module, not a dashboard full of cards.
 The desktop frame must never exceed the viewport once outer gutters are included.
 The sidebar, main content and inspector scroll independently only when their
@@ -51,9 +52,8 @@ Motion only communicates current work (indeterminate progress while a job
 is truly running); no invented percentages. Focus rings use the violet
 accent. Disabled buttons look disabled. Errors stay inside the activity
 area and preserve the selected file. Respect reduced motion, keyboard
-focus, and 200% zoom. The install confirmation uses the native `dialog`
-element; close or Escape returns focus. Screen-reader status uses an
-`aria-live` activity region.
+focus, and 200% zoom. Install confirmation uses a Gio confirmation state before invoking the privileged
+operation. The legacy browser-only interface retains its native HTML dialog and live region.
 
 ## Components
 - `drop-zone`: large, keyboard-activatable, accepts one file by
@@ -76,9 +76,9 @@ packages use the existing positive/neutral tokens; AUR remains visually
 subordinate and does not pretend to be an official trusted repository.
 
 ## Approved application icon and simplified chrome
-The approved icon is the violet package-and-rotation-arrow mark, embedded at
-`cmd/mutate/ui/mutate.png` and in the native Wails shell. Both PNG copies must
-use transparent corners, with the violet artwork and light package face intact. The title bar
+The approved icon is the violet package-and-rotation-arrow mark embedded at
+`cmd/mutate/ui/mutate.png`; its transparent PNG corners must be preserved.
+The Gio desktop uses the system window decoration; the header
 shows only the app name and functional close control. Do not add technical
 footer copy such as "CLI + GUI", "local tool" or "local session". Keep
 repository management a flat row list with status, enable switch and one

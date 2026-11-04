@@ -254,20 +254,19 @@ With `MUTATE_TIMINGS=1`, the full inspection breakdown includes `detect`, `unpac
 ## Integrated graphical interface (Linux)
 
 The **CGO-free Go CLI** owns the package-processing engine and local GUI API.
-When available, an **optional Wails v3 native window** (`mutate-gui`) is
+When available, an **optional Gio UI native window** (`mutate-gio`) is
 installed alongside it and used by default, with **no Chrome requirement**.
-Wails uses GTK4/WebKitGTK 6.0 (or legacy GTK3/WebKitGTK 4.1 on compatible
-systems). HTML/CSS/JS remain embedded in the main `mutate` binary.
+Gio uses the Linux graphics stack (X11/Wayland, EGL/GLES). HTML/CSS/JS remain embedded in the main `mutate` binary.
 During source installation, the installer **automatically installs missing
-GTK/WebKit development packages** using APT, DNF, pacman or zypper. It prints
+Gio X11/Wayland/EGL development packages** using APT, DNF, pacman or zypper. It prints
 the action and requests sudo authorization only if system changes are needed.
 If elevation or a supported package set is unavailable, the CLI still works
-but the default `mutate gui` command reports missing Wails rather than
+but the default `mutate gui` command reports missing Gio rather than
 opening Chrome. Use `mutate gui --browser` to opt in to browser mode.
 On Arch, it never performs an unsafe partial `pacman -Sy` upgrade.
 
 ```sh
-mutate gui                      # native Wails window when the GTK desktop shell is installed
+mutate gui                      # native Gio window when the Gio desktop shell is installed
 mutate gui --register           # add M.U.T.A.T.E. to your Linux application menu
 mutate gui --browser            # explicitly open browser fallback
 mutate gui --no-browser         # serve loopback UI without launching a window
@@ -283,7 +282,7 @@ curl -fsSL https://raw.githubusercontent.com/rfdetoni/mutate/main/install.sh | s
 ```
 
 For headless/server environments, pass `--no-desktop` or set
-`MUTATE_INSTALL_DESKTOP=0`. To avoid automatic installation of GTK/WebKit
+`MUTATE_INSTALL_DESKTOP=0`. To avoid automatic installation of X11/Wayland/EGL
 packages, also pass `--no-gui-deps` or set `MUTATE_INSTALL_GUI_DEPS=0`.
 The explicit `--gui-deps` flag re-enables it for that run.
 `mutate gui --register` remains available to refresh the per-user launcher
@@ -303,7 +302,7 @@ mutation-request header isolates the local browser session. All assets are
 embedded and no CDNs are used. Files live in a private temporary workspace
 that is removed on shutdown; uploads are limited to 2 GiB. Source compilation
 remains opt-in and sandboxed. The GUI's progress shows real operation phases,
-not invented percentages. the native Wails shell opens an independent GTK window
+not invented percentages. the native Gio shell opens an independent Gio window
 when built and installed. Browser mode requires an explicit `--browser`.
 For headless use `--no-browser` and open the displayed local URL manually.
 

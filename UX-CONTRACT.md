@@ -2,12 +2,12 @@
 
 The existing CLI and the core Go conversion pipeline remain authoritative
 for package detection, dependency resolution, sandbox requirements and
-packaging. The GUI is another entry point in the **same** CGO-free executable.
+packaging. The native renderer reuses the **same** CGO-free motor via a token-authenticated loopback API.
 
 ## Launch and boundaries
 `mutate gui` serves embedded static assets on `127.0.0.1` with a
 cryptographically random path-specific session token. `mutate gui` requires
-the Wails `mutate-gui` executable beside the CLI, and exits with an actionable
+the Gio `mutate-gio` executable beside the CLI, and exits with an actionable
 error before starting the local service if it is missing. A browser launches
 only when explicitly requested using `mutate gui --browser`; `--no-browser`
 serves the authenticated URL without launching a window, for headless/tests.
@@ -53,10 +53,8 @@ references are identified by opaque IDs, never by arbitrary API paths.
 Desktop scroll ownership: the app frame fits the viewport (including margins);
 sidebar, main and inspector scroll only for overflowing content. At widths up
 to 900px, stacked views return to natural document scrolling.
-Navigation: `app.js` / `.nav-item`; form/radio: native HTML inputs;
-dialog: native `<dialog>`; status notification: single `#toast` live
-region; application scrollbar baseline: `style.css`; activity/error:
-single `#status-panel`. No framework-level duplicate primitives.
+Native widget layout, interaction and status are rendered in `desktop/ui.go` using Gio.
+The opt-in browser fallback keeps its HTML/CSS/JS separately.
 
 ## Out of scope
 No package signature verification, sandboxed execution of installed apps,
@@ -87,9 +85,9 @@ the Go motor cannot guarantee compatibility.
   manager at installation time to honor repository priorities.
 
 ## Native desktop and source management
-The CGO-free `mutate` binary serves the authenticated session; optional
-`mutate-gui` is a Wails v3 GTK/WebKit shell installed beside it.
-`mutate gui` launches the native Wails window only. Missing Wails binaries
+The CGO-free `mutate` binary serves an authenticated loopback session;
+`mutate-gio` renders the default Linux window using Gio/X11/Wayland/EGL without a WebView.
+`mutate gui` launches the native Gio window only. Missing Gio binaries
 never trigger an implicit browser; `--browser` is the sole browser opt-in.
 A native window exit shuts down the server and temporary data.
 No browser brand appears in the UI.

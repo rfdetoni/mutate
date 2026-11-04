@@ -109,7 +109,7 @@ case "$(uname -m)" in x86_64|amd64) ;; *) echo "SKIP: integration tests require 
 sh "$ROOT/install.sh" --release > "$TMP/release.log" 2>&1 ||
   { cat "$TMP/release.log"; die "release install"; }
 [ "$("$MUTATE_INSTALL_DIR/mutate")" = release-binary ] || die "release content"
-grep -q 'Native Wails GUI is not installed' "$TMP/release.log" ||
+grep -q 'Native Gio GUI is not installed' "$TMP/release.log" ||
   die "CLI-only installation must report missing native GUI"
 [ -L "$MUTATE_INSTALL_DIR/mut" ] || die "missing mut symlink"
 DESKTOP_ENTRY="$XDG_DATA_HOME/applications/mutate.desktop"
@@ -171,7 +171,7 @@ sh "$ROOT/install.sh" --source > "$TMP/bootstrap.log" 2>&1 ||
 grep -q 'temporary official Go toolchain' "$TMP/bootstrap.log" || die "toolchain not bootstrapped"
 [ "$("$MUTATE_INSTALL_DIR/mutate")" = source-binary ] || die "bootstrap content"
 
-# Native Wails dependency management tests use mocked package managers.
+# Native Gio dependency management tests use mocked package managers.
 # They must never touch the runner's real APT packages or require root.
 cp "$TMP/fixtures/go-saved" "$TMP/fixtures/bin/go"
 chmod 755 "$TMP/fixtures/bin/go"
@@ -182,19 +182,18 @@ tar -czf "$TMP/fixtures/source.tar.gz" -C "$TMP/fixtures/source" mutate-main
 
 cat > "$TMP/fixtures/bin/pkg-config" <<'EOF'
 #!/bin/sh
-case "$1" in --exists|--cflags) ;; *) exit 1 ;; esac
+[ "$1" = --exists ] || exit 1
 [ -f "$MOCK_FIXTURES/gui-installed" ] || exit 1
 case "$*" in
-  *"gtk4 webkitgtk-6.0"*) [ "${MOCK_GUI_LEGACY:-0}" = 0 ] ;;
-  *"gtk+-3.0 webkit2gtk-4.1"*) [ "${MOCK_GUI_LEGACY:-0}" = 1 ] ;;
-  *"glib-2.0"*|*"gobject-2.0"*|*"pango"*) : ;;
+  *"egl glesv2"*) : ;;
+  *"x11 xcursor xkbcommon-x11"*) : ;;
+  *"wayland-client"*) [ "${MOCK_GUI_NO_WAYLAND:-0}" = 0 ] ;;
   *) exit 1 ;;
-esac || exit 1
-[ "$1" != --cflags ] || printf '%s\n' '-I/mock/include'
+esac
 EOF
 cat > "$TMP/fixtures/bin/cc" <<'EOF'
 #!/bin/sh
-# A present .pc file alone does not guarantee compilable GTK headers.
+# A present .pc file alone does not guarantee compilable Gio headers.
 [ -f "$MOCK_FIXTURES/gui-installed" ] || exit 1
 if [ "${MOCK_GUI_BROKEN_HEADERS:-0}" = 1 ]; then
   echo "fatal error: glib-object.h: No such file or directory" >&2
@@ -237,51 +236,35 @@ MOCK_RELEASE_MISSING=1
 export MOCK_RELEASE_MISSING
 rm -f "$TMP/fixtures/gui-installed" "$TMP/fixtures/gui-apt.log"
 sh "$ROOT/install.sh" --source > "$TMP/gui-auto.log" 2>&1 ||
-  { cat "$TMP/gui-auto.log"; die "automatic Wails dependencies"; }
+  { cat "$TMP/gui-auto.log"; die "automatic Gio dependencies"; }
 [ "$("$MUTATE_INSTALL_DIR/mutate")" = source-binary ] || die "GUI install broke CLI"
-[ -x "$MUTATE_INSTALL_DIR/mutate-gui" ] || die "native Wails shell not installed"
-grep -q 'install -y --no-install-recommends build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev' \
-  "$TMP/fixtures/gui-apt.log" || die "modern GTK packages not installed"
+[ -x "$MUTATE_INSTALL_DIR/mutate-gio" ] || die "native Gio shell not installed"
+grep -q 'install -y --no-install-recommends build-essential pkg-config libwayland-dev' \
+  "$TMP/fixtures/gui-apt.log" || die "Gio graphics development packages not installed"
 
 # An already provisioned host must not invoke apt-get again.
 rm -f "$TMP/fixtures/gui-apt.log"
 sh "$ROOT/install.sh" --source > "$TMP/gui-present.log" 2>&1 ||
   { cat "$TMP/gui-present.log"; die "GUI dependencies already present"; }
-[ ! -e "$TMP/fixtures/gui-apt.log" ] || die "reinstalled GTK dependencies unnecessarily"
+[ ! -e "$TMP/fixtures/gui-apt.log" ] || die "reinstalled Gio dependencies unnecessarily"
 
-# Regression: a valid GTK pkg-config stack with a broken compiler must not
-# re-install already present APT packages or conceal compiler diagnostics.
-MOCK_GUI_BROKEN_HEADERS=1
-export MOCK_GUI_BROKEN_HEADERS
-rm -f "$TMP/fixtures/gui-apt.log" "$MUTATE_INSTALL_DIR/mutate-gui"
-sh "$ROOT/install.sh" --source > "$TMP/gui-header-fail.log" 2>&1 ||
-  { cat "$TMP/gui-header-fail.log"; die "broken native GUI compiler probe" ; }
-[ ! -e "$TMP/fixtures/gui-apt.log" ] ||
-  die "reinstalled existing GTK development packages despite compiler failure"
-[ ! -e "$MUTATE_INSTALL_DIR/mutate-gui" ] || die "broken native GUI built unexpectedly"
-grep -q 'fatal error: glib-object.h' "$TMP/gui-header-fail.log" ||
-  die "compiler diagnostics were swallowed"
-grep -q 'skipping redundant package reinstall' "$TMP/gui-header-fail.log" ||
-  die "did not explain why APT was skipped"
-MOCK_GUI_BROKEN_HEADERS=0
-export MOCK_GUI_BROKEN_HEADERS
-
-# Prefer the legacy Wails GTK3 build if the distro provides WebKitGTK 4.1.
-MOCK_GUI_LEGACY=1
-export MOCK_GUI_LEGACY
-rm -f "$TMP/fixtures/gui-installed" "$TMP/fixtures/gui-apt.log"
-sh "$ROOT/install.sh" --source > "$TMP/gui-legacy.log" 2>&1 ||
-  { cat "$TMP/gui-legacy.log"; die "legacy Wails dependencies"; }
-grep -q 'libgtk-3-dev libwebkit2gtk-4.1-dev' "$TMP/fixtures/gui-apt.log" ||
-  die "legacy GTK3 package selection failed"
-grep -q -- '-tags=gtk3' "$TMP/fixtures/go-build-args.log" ||
-  die "legacy GTK3 Wails build tag missing"
+# An X11-only machine must build Gio without installing the Wayland stack.
+MOCK_GUI_NO_WAYLAND=1
+export MOCK_GUI_NO_WAYLAND
+rm -f "$TMP/fixtures/gui-apt.log"
+sh "$ROOT/install.sh" --source > "$TMP/gui-x11.log" 2>&1 ||
+  { cat "$TMP/gui-x11.log"; die "Gio X11-only build"; }
+[ ! -e "$TMP/fixtures/gui-apt.log" ] || die "Gio reinstalled packages for X11-only host"
+grep -q -- '-tags=nowayland' "$TMP/fixtures/go-build-args.log" ||
+  die "Gio nowayland build tag missing"
+MOCK_GUI_NO_WAYLAND=0
+export MOCK_GUI_NO_WAYLAND
 
 # Opt-outs must prevent privileged dependency installation.
-rm -f "$MUTATE_INSTALL_DIR/mutate-gui" "$TMP/fixtures/gui-installed" "$TMP/fixtures/gui-apt.log"
+rm -f "$MUTATE_INSTALL_DIR/mutate-gio" "$TMP/fixtures/gui-installed" "$TMP/fixtures/gui-apt.log"
 MUTATE_INSTALL_GUI_DEPS=0 sh "$ROOT/install.sh" --source > "$TMP/gui-env-optout.log" 2>&1 ||
   { cat "$TMP/gui-env-optout.log"; die "GUI env opt-out"; }
-[ ! -e "$TMP/fixtures/gui-apt.log" ] && [ ! -e "$MUTATE_INSTALL_DIR/mutate-gui" ] ||
+[ ! -e "$TMP/fixtures/gui-apt.log" ] && [ ! -e "$MUTATE_INSTALL_DIR/mutate-gio" ] ||
   die "GUI dependencies installed despite environment opt-out"
 sh "$ROOT/install.sh" --source --no-gui-deps > "$TMP/gui-flag-optout.log" 2>&1 ||
   { cat "$TMP/gui-flag-optout.log"; die "GUI flag opt-out"; }
@@ -290,12 +273,12 @@ sh "$ROOT/install.sh" --source --no-gui-deps > "$TMP/gui-flag-optout.log" 2>&1 |
 # An explicit --gui-deps overrides the environment opt-out.
 MUTATE_INSTALL_GUI_DEPS=0 sh "$ROOT/install.sh" --source --gui-deps > "$TMP/gui-override.log" 2>&1 ||
   { cat "$TMP/gui-override.log"; die "GUI dependency override"; }
-[ -x "$MUTATE_INSTALL_DIR/mutate-gui" ] || die "--gui-deps did not build native GUI"
+[ -x "$MUTATE_INSTALL_DIR/mutate-gio" ] || die "--gui-deps did not build native GUI"
 
 # A headless host without sudo must keep the CLI functional and warn.
 MOCK_GUI_SUDO_DENY=1
 export MOCK_GUI_SUDO_DENY
-rm -f "$TMP/fixtures/gui-installed" "$TMP/fixtures/gui-apt.log" "$MUTATE_INSTALL_DIR/mutate-gui"
+rm -f "$TMP/fixtures/gui-installed" "$TMP/fixtures/gui-apt.log" "$MUTATE_INSTALL_DIR/mutate-gio"
 sh "$ROOT/install.sh" --source > "$TMP/gui-no-sudo.log" 2>&1 ||
   { cat "$TMP/gui-no-sudo.log"; die "GUI no-sudo graceful fallback"; }
 [ "$("$MUTATE_INSTALL_DIR/mutate")" = source-binary ] || die "no-sudo failed CLI install"

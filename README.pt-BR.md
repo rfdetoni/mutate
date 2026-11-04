@@ -256,18 +256,17 @@ O modo padrão não coleta essas medições. Para comparar versões em pacotes r
 
 ## Interface gráfica integrada (Linux)
 
-O executável CLI Go continua compilado **sem CGO**. Quando GTK/WebKit está
-disponível, o instalador também compila `mutate-gui`, uma janela **Wails
-v3 nativa**, sem precisar de Chrome/Chromium. A interface HTML/CSS/JS
+O executável CLI Go continua compilado **sem CGO**. Quando X11/Wayland/EGL está
+disponível, o instalador também compila `mutate-gio`, uma janela **Gio UI nativa**, sem precisar de Chrome/Chromium. A interface HTML/CSS/JS
 continua embutida no motor. Durante a compilação do código-fonte, o
-instalador verifica e **instala automaticamente as bibliotecas GTK/WebKit
+instalador verifica e **instala automaticamente as bibliotecas X11/Wayland/EGL
 ausentes** com APT, DNF, pacman ou zypper, solicitando autorização sudo
 somente quando necessária. Se não conseguir, a CLI continua funcionando,
-mas `mutate gui` passa a informar a ausência do Wails sem abrir
+mas `mutate gui` passa a informar a ausência do Gio sem abrir
 o Chrome automaticamente. Para usar navegador, execute `mutate gui --browser`.
 
 ```sh
-mutate gui                      # abre janela Wails quando instalada
+mutate gui                      # abre janela Gio quando instalada
 mutate gui --register           # cadastra o atalho no menu de aplicativos Linux
 mutate gui --browser            # força alternativa pelo navegador
 mutate gui --no-browser         # disponibiliza URL local sem abrir janela
@@ -286,8 +285,8 @@ Em servidores sem ambiente gráfico, use `--no-desktop` ou
 `MUTATE_INSTALL_DESKTOP=0` para desativar o registro. Para também
 **não instalar dependências gráficas**, use `--no-gui-deps` ou
 `MUTATE_INSTALL_GUI_DEPS=0`. A opção `--gui-deps` força a tentativa
-de instalação quando necessário. O instalador usa GTK4/WebKitGTK 6.0
-quando disponível, ou GTK3/WebKit2GTK 4.1 nas distribuições compatíveis.
+de instalação quando necessário. O instalador usa X11/Wayland e EGL/GLES
+quando disponível, ou X11/Wayland nas distribuições compatíveis.
 Não executa atualização parcial de pacotes no Arch.
 O comando `mutate gui --register` continua disponível para recriar
 manualmente o atalho do usuário.
@@ -304,10 +303,10 @@ A interface usa HTTP **somente em 127.0.0.1**, com um caminho de sessão
 aleatório e cabeçalho obrigatório para alterações. Arquivos ficam em
 diretório temporário privado (excluído ao encerrar); upload máximo de
 2 GiB. Compilação de código-fonte continua opt-in e isolada. Progresso
-indica apenas fases reais, sem percentuais fictícios. Quando o shell Wails estiver instalado, a interface abre como
-aplicativo desktop independente. Sem dependências GTK/WebKit de compilação,
+indica apenas fases reais, sem percentuais fictícios. Quando o shell Gio estiver instalado, a interface abre como
+aplicativo desktop independente. Sem dependências X11/Wayland/EGL de compilação,
 o navegador somente será aberto mediante `mutate gui --browser`.
-Sem o Wails instalado, `mutate gui` informa o erro em vez de abrir
+Sem o Gio instalado, `mutate gui` informa o erro em vez de abrir
 o Chrome. Para uso headless, utilize `--no-browser`.
 
 As regras de design e comportamento estão em [DESIGN.md](DESIGN.md) e

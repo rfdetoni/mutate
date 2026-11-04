@@ -32,8 +32,8 @@ Usage: sh install.sh [--user | --system | --dir PATH] [--source | --release] [--
   --version TAG   Select a release tag (default: latest)
   --desktop       Explicitly register the GUI launcher (already enabled by default)
   --no-desktop    Do not register a Linux application-menu launcher
-  --no-gui-deps   Do not install missing Wails/GTK system dependencies
-  --gui-deps      Install missing Wails/GTK dependencies (default)
+  --no-gui-deps   Do not install missing Gio/GTK system dependencies
+  --gui-deps      Install missing Gio/GTK dependencies (default)
   --help          Show help
 Environment: MUTATE_INSTALL_DIR, MUTATE_INSTALL_METHOD, MUTATE_VERSION, MUTATE_REF, MUTATE_INSTALL_DESKTOP (1 by default; 0 disables), MUTATE_INSTALL_GUI_DEPS (1 by default; 0 disables)
 EOF
@@ -137,15 +137,15 @@ download_release() {
 
     members=$(tar -tzf "$WORK/$asset") || die "invalid release archive"
     case "$members" in
-        mutate|$(printf 'mutate\nmutate-gui')|$(printf 'mutate-gui\nmutate')) ;;
+        mutate|$(printf 'mutate\nmutate-gio')|$(printf 'mutate-gio\nmutate')) ;;
         *) die "unexpected release archive entries" ;;
     esac
     mkdir -p "$WORK/prebuilt"
     tar -xzf "$WORK/$asset" -C "$WORK/prebuilt" || die "cannot unpack release archive"
     [ -f "$WORK/prebuilt/mutate" ] && [ ! -L "$WORK/prebuilt/mutate" ] || die "release binary is not a regular file"
     SOURCE_BINARY="$WORK/prebuilt/mutate"
-    if [ -f "$WORK/prebuilt/mutate-gui" ] && [ ! -L "$WORK/prebuilt/mutate-gui" ]; then
-        GUI_BINARY="$WORK/prebuilt/mutate-gui"
+    if [ -f "$WORK/prebuilt/mutate-gio" ] && [ ! -L "$WORK/prebuilt/mutate-gio" ]; then
+        GUI_BINARY="$WORK/prebuilt/mutate-gio"
     fi
     return 0
 }
@@ -198,83 +198,36 @@ bootstrap_go() {
     [ -x "$GO_BIN" ] || die "downloaded Go toolchain is not executable"
 }
 
-# pkg-config --exists is insufficient: stale .pc files may exist even when
-# GLib/Pango development headers are missing. Probe with a real C compiler.
-native_gui_headers() {
-    case "$1" in
-        gtk4)
-            set -- gtk4 webkitgtk-6.0
-            includes='#include <glib-object.h>
-#include <pango/pango.h>
-#include <gtk/gtk.h>
-#include <webkit/webkit.h>' ;;
-        gtk3)
-            set -- gtk+-3.0 webkit2gtk-4.1
-            includes='#include <glib-object.h>
-#include <pango/pango.h>
-#include <gtk/gtk.h>
-#include <webkit2/webkit2.h>' ;;
-        *) return 1 ;;
-    esac
-    # Request GLib and Pango explicitly: older/misconfigured .pc dependency
-    # chains sometimes omit their include directories from GTK's cflags.
-    flags=$(pkg-config --cflags "$@" glib-2.0 gobject-2.0 pango 2>"$WORK/native-gui-probe.log") || return 1
-    # pkg-config produces compiler argv flags; split them, never eval them.
-    # shellcheck disable=SC2086
-    printf '%s\n' "$includes" | cc $flags -x c -fsyntax-only - >/dev/null 2>"$WORK/native-gui-probe.log"
-}
-
-# Show the actual failing compiler stderr rather than masking it behind a
-# generic "pkg-config cannot find a stack" warning.
-diagnose_native_gui_deps() {
-    warn "GTK/WebKit header compilation failed; compiler diagnostic:"
-    if [ -s "$WORK/native-gui-probe.log" ]; then
-        sed -n '1,20p' "$WORK/native-gui-probe.log" >&2
-    else
-        warn "no compiler details captured; inspect pkg-config metadata and the C compiler"
-    fi
-    if command -v pkg-config >/dev/null 2>&1; then
-        for stack in gtk4 webkitgtk-6.0 gtk+-3.0 webkit2gtk-4.1 glib-2.0 pango; do
-            if ! pkg-config --exists "$stack" 2>/dev/null; then
-                warn "pkg-config module unavailable: $stack"
-            fi
-        done
-    fi
-    warn "Check: pkg-config --cflags gtk+-3.0 webkit2gtk-4.1 glib-2.0 pango"
-    warn "Check custom PKG_CONFIG_PATH, PKG_CONFIG_LIBDIR, PKG_CONFIG_SYSROOT_DIR or CC settings."
-}
-
-native_gui_variant() {
+# Gio uses a native GPU window: no GTK, WebKit, Chrome or HTML runtime.
+# Probe the graphics stack; only request system packages if missing.
+gio_build_tags() {
     command -v gcc >/dev/null 2>&1 || return 1
-    command -v cc >/dev/null 2>&1 || return 1
     command -v pkg-config >/dev/null 2>&1 || return 1
-    if pkg-config --exists gtk4 webkitgtk-6.0 2>/dev/null &&
-       native_gui_headers gtk4; then
-        printf '%s\n' gtk4
-    elif pkg-config --exists gtk+-3.0 webkit2gtk-4.1 2>/dev/null &&
-         native_gui_headers gtk3; then
-        printf '%s\n' gtk3
+    pkg-config --exists egl glesv2 2>/dev/null || return 1
+    if pkg-config --exists x11 xcursor xkbcommon-x11 2>/dev/null; then
+        if pkg-config --exists wayland-client 2>/dev/null; then
+            printf '%s\n' default
+        else
+            printf '%s\n' nowayland
+        fi
+    elif pkg-config --exists wayland-client 2>/dev/null; then
+        printf '%s\n' nox11
     else
         return 1
     fi
 }
 
-# Keep the CGO-free CLI independent of the optional Wails/GTK build.
-have_native_gui_deps() { native_gui_variant >/dev/null; }
-
-# The script may be piped to 'sh', so stdin is not a password prompt.
-# sudo reads from /dev/tty only if stderr is attached to a terminal.
-# In CI/headless sessions without cached sudo credentials, never hang.
+# sudo always uses the interactive tty; never read credentials from curl|sh.
 gui_root() {
     if [ "$(id -u)" -eq 0 ]; then "$@"; return $?; fi
     if ! command -v sudo >/dev/null 2>&1; then
-        warn "sudo is unavailable; cannot install graphical dependencies"
+        warn "sudo is unavailable; cannot install native Gio dependencies"
         return 1
     fi
     if sudo -n true 2>/dev/null; then
         sudo "$@"
     elif [ -t 2 ]; then
-        say "Administrator authorization is required to install GTK/WebKit dependencies."
+        say "Administrator authorization is required to install native graphics libraries."
         sudo "$@"
     else
         warn "no interactive terminal or pre-authorized sudo; skipping GUI dependencies"
@@ -282,115 +235,62 @@ gui_root() {
     fi
 }
 
-# The Wails v3 default is GTK4/WebKitGTK 6.0. On older Debian/Ubuntu
-# distributions, choose the supported GTK3/WebKit2GTK 4.1 build instead.
-# Package names here are fixed allowlisted strings, never downloaded scripts.
-apt_gui_packages() {
-    # Repair the stack already selected by the host before installing a
-    # different major GTK version just because its packages are available.
-    if pkg-config --exists gtk4 webkitgtk-6.0 2>/dev/null; then
-        gui_stack=gtk4
-    elif pkg-config --exists gtk+-3.0 webkit2gtk-4.1 2>/dev/null; then
-        gui_stack=gtk3
-    elif apt-cache show libwebkitgtk-6.0-dev >/dev/null 2>&1; then
-        gui_stack=gtk4
-    elif apt-cache show libwebkit2gtk-4.1-dev >/dev/null 2>&1; then
-        gui_stack=gtk3
-    else
-        say "Refreshing APT package metadata to locate the compatible WebKitGTK version..."
-        gui_root apt-get update -qq || return 1
-        if apt-cache show libwebkitgtk-6.0-dev >/dev/null 2>&1; then
-            gui_stack=gtk4
-        elif apt-cache show libwebkit2gtk-4.1-dev >/dev/null 2>&1; then
-            gui_stack=gtk3
-        else
-            warn "neither supported WebKitGTK development package is available in APT"
-            return 1
-        fi
-    fi
-    case "$gui_stack" in
-        gtk4)
-            GUI_PACKAGES="build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev libglib2.0-dev libpango1.0-dev" ;;
-        gtk3)
-            GUI_PACKAGES="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libglib2.0-dev libpango1.0-dev" ;;
-    esac
-    # Shell splitting is intentional: these package lists contain only literals.
-    # shellcheck disable=SC2086
-    gui_root apt-get install -y --no-install-recommends $GUI_PACKAGES
-}
-
 install_gui_build_deps() {
     [ "$INSTALL_GUI_DEPS" = 1 ] || {
-        warn "automatic native GUI dependencies disabled (--no-gui-deps)"
+        warn "automatic Gio GUI dependencies disabled (--no-gui-deps)"
         return 1
     }
-    if command -v apt-get >/dev/null 2>&1 && command -v apt-cache >/dev/null 2>&1; then
-        say "Installing missing Wails/GTK dependencies with APT..."
-        apt_gui_packages || return 1
+    if command -v apt-get >/dev/null 2>&1; then
+        say "Installing missing Gio/X11/Wayland development dependencies with APT..."
+        gui_root apt-get install -y --no-install-recommends build-essential pkg-config \
+            libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev \
+            libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev || return 1
     elif command -v dnf5 >/dev/null 2>&1; then
-        say "Installing missing Wails/GTK dependencies with DNF..."
-        gui_root dnf5 install -y gcc pkg-config gtk4-devel webkitgtk6.0-devel || return 1
+        gui_root dnf5 install -y gcc pkgconf-pkg-config wayland-devel libX11-devel \
+            libxkbcommon-x11-devel mesa-libGLES-devel mesa-libEGL-devel libXcursor-devel libffi-devel || return 1
     elif command -v dnf >/dev/null 2>&1; then
-        say "Installing missing Wails/GTK dependencies with DNF..."
-        gui_root dnf install -y gcc pkg-config gtk4-devel webkitgtk6.0-devel || return 1
+        gui_root dnf install -y gcc pkgconf-pkg-config wayland-devel libX11-devel \
+            libxkbcommon-x11-devel mesa-libGLES-devel mesa-libEGL-devel libXcursor-devel libffi-devel || return 1
     elif command -v pacman >/dev/null 2>&1; then
-        say "Installing missing Wails/GTK dependencies with pacman..."
-        # Do not run pacman -Sy: a partial Arch upgrade can break the host.
-        gui_root pacman -S --needed --noconfirm base-devel pkgconf gtk4 webkitgtk-6.0 || return 1
+        # No unsafe partial Arch upgrade.
+        gui_root pacman -S --needed --noconfirm base-devel pkgconf wayland libx11 \
+            libxkbcommon mesa libxcursor libffi || return 1
     elif command -v zypper >/dev/null 2>&1; then
-        say "Installing missing Wails/GTK dependencies with zypper..."
-        gui_root zypper --non-interactive install gcc pkg-config gtk4-devel webkitgtk6_0-devel || return 1
+        gui_root zypper --non-interactive install gcc pkg-config wayland-devel libX11-devel \
+            libxkbcommon-devel Mesa-libGLESv2-devel Mesa-libEGL-devel libXcursor-devel libffi-devel || return 1
     else
-        warn "no supported package manager found for automatic GTK/WebKit installation"
+        warn "no supported package manager for Gio graphic build dependencies"
         return 1
     fi
-    if ! have_native_gui_deps; then
-        diagnose_native_gui_deps
-        warn "Native GTK/WebKit compiler check failed after installing dependencies"
+    gio_build_tags >/dev/null || {
+        warn "Gio graphics stack remains incomplete (EGL/GLES with X11 or Wayland)"
         return 1
-    fi
-    return 0
+    }
 }
 
 build_desktop_shell() {
     [ -f "$SRC/desktop/go.mod" ] || return 0
     [ "$ARCH" != unknown ] || return 0
-    if ! have_native_gui_deps; then
-        # Installed GTK/WebKit .pc files and an unsuccessful compiler probe
-        # indicate a broken compiler/include environment, not necessarily
-        # absent APT packages. Reinstalling the same packages repeatedly
-        # cannot repair custom compiler or pkg-config environment settings.
-        if command -v pkg-config >/dev/null 2>&1 &&
-           { pkg-config --exists gtk4 webkitgtk-6.0 2>/dev/null ||
-             pkg-config --exists gtk+-3.0 webkit2gtk-4.1 2>/dev/null; }; then
-            diagnose_native_gui_deps
-            warn "GTK/WebKit pkg-config metadata exists, but C compilation fails; skipping redundant package reinstall"
-            return 0
-        fi
+    if ! gui_tags=$(gio_build_tags); then
         if ! install_gui_build_deps; then
-            warn "native GUI build dependencies unavailable; CLI remains available, but browser mode requires 'mutate gui --browser'"
+            warn "Gio desktop dependencies unavailable; CLI works, browser requires 'mutate gui --browser'."
             return 0
         fi
+        gui_tags=$(gio_build_tags) || return 0
     fi
-    gui_variant=$(native_gui_variant) || {
-        warn "GTK/WebKit headers remain unavailable; Wails cannot be built (browser mode only with 'mutate gui --browser')"
-        return 0
-    }
-    gui_tags=
-    [ "$gui_variant" != gtk3 ] || gui_tags="-tags=gtk3"
-    # The explicit GLib/Pango flags are also passed to CGO, not only the
-    # preflight check, so the actual Wails build uses the same header paths.
-    gui_cflags=$(pkg-config --cflags glib-2.0 gobject-2.0 pango) || {
-        diagnose_native_gui_deps
-        return 0
-    }
-    say "Building native Wails desktop window..."
+    case "$gui_tags" in
+        default) gui_tags= ;;
+        nox11) gui_tags="-tags=nox11" ;;
+        nowayland) gui_tags="-tags=nowayland" ;;
+        *) warn "unsupported Gio graphics mode"; return 0 ;;
+    esac
+    say "Building native Gio desktop window (no GTK or WebView)..."
     if (cd "$SRC/desktop" && unset GOROOT GOTOOLDIR &&
         GOTOOLCHAIN=local "$GO_BIN" mod tidy &&
-        CGO_ENABLED=1 CGO_CFLAGS="${CGO_CFLAGS:+$CGO_CFLAGS }$gui_cflags" GOOS=linux GOTOOLCHAIN=local "$GO_BIN" build ${gui_tags:+"$gui_tags"} -trimpath -ldflags="-s -w" -o "$WORK/mutate-gui" .); then
-        [ -s "$WORK/mutate-gui" ] && GUI_BINARY="$WORK/mutate-gui"
+        CGO_ENABLED=1 GOOS=linux GOTOOLCHAIN=local "$GO_BIN" build ${gui_tags:+"$gui_tags"} -trimpath -ldflags="-s -w" -o "$WORK/mutate-gio" .); then
+        [ -s "$WORK/mutate-gio" ] && GUI_BINARY="$WORK/mutate-gio"
     else
-        warn "native Wails build failed; CLI remains available, browser mode requires 'mutate gui --browser'"
+        warn "native Gio build failed; CLI remains available. Browser requires explicit --browser."
     fi
 }
 
@@ -494,25 +394,25 @@ else
 fi
 
 # Install the optional native shell alongside the CLI. The CLI is always
-# usable even when the host lacks GTK/WebKit build dependencies.
+# usable even when the host lacks Gio build dependencies.
 if [ -n "$GUI_BINARY" ]; then
-    gui_new="$DEST/.mutate-gui-new-$$"
+    gui_new="$DEST/.mutate-gio-new-$$"
     if [ -n "$PRIV" ]; then
         sudo cp "$GUI_BINARY" "$gui_new" && sudo chmod 0755 "$gui_new" &&
-            sudo mv -f "$gui_new" "$DEST/mutate-gui" ||
+            sudo mv -f "$gui_new" "$DEST/mutate-gio" ||
             warn "could not install native GUI; CLI remains available"
     else
         cp "$GUI_BINARY" "$gui_new" && chmod 0755 "$gui_new" &&
-            mv -f "$gui_new" "$DEST/mutate-gui" ||
+            mv -f "$gui_new" "$DEST/mutate-gio" ||
             warn "could not install native GUI; CLI remains available"
     fi
 fi
 
 say "Installed: $DEST/mutate"
-if [ -x "$DEST/mutate-gui" ]; then
-    say "Native GUI: $DEST/mutate-gui"
+if [ -x "$DEST/mutate-gio" ]; then
+    say "Native GUI: $DEST/mutate-gio"
 else
-    warn "Native Wails GUI is not installed at $DEST/mutate-gui; 'mutate gui' will not open Chrome automatically. Reinstall with --gui-deps or explicitly use 'mutate gui --browser'."
+    warn "Native Gio GUI is not installed at $DEST/mutate-gio; 'mutate gui' will not open Chrome automatically. Reinstall with --gui-deps or explicitly use 'mutate gui --browser'."
 fi
 say "Alias:     $DEST/mut (unless previously occupied)"
 case ":$PATH:" in

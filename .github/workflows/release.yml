@@ -6,7 +6,7 @@ permissions:
   contents: write
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -18,19 +18,17 @@ jobs:
         run: |
           CGO_ENABLED=0 go test ./...
           sh -n install.sh
-      # Build GTK3 against Ubuntu 24.04 so the published amd64 release
-      # includes a native window, without needing a Go/C compiler on the host.
-      - name: Install native GTK3 release dependencies
+      - name: Install native Gio release dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends pkg-config gcc libgtk-3-dev libwebkit2gtk-4.1-dev
-      - name: Build static Linux binaries and checksums
+          sudo apt-get install -y --no-install-recommends gcc pkg-config libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev
+      - name: Build portable Linux CLI and native amd64 Gio release
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist .release-bin
-          (cd desktop && CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags=gtk3 -trimpath -ldflags="-s -w" -o ../.release-bin/mutate-gui .)
-          test -s .release-bin/mutate-gui
+          (cd desktop && go mod tidy && CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../.release-bin/mutate-gio .)
+          test -s .release-bin/mutate-gio
           for spec in \
             amd64:amd64:0 \
             arm64:arm64:0 \
@@ -51,7 +49,7 @@ jobs:
                 go build -trimpath -ldflags="-s -w" -o .release-bin/mutate ./cmd/mutate
             fi
             if [ "$target" = amd64 ]; then
-              tar -czf "dist/mutate_linux_$target.tar.gz" -C .release-bin mutate mutate-gui
+              tar -czf "dist/mutate_linux_$target.tar.gz" -C .release-bin mutate mutate-gio
             else
               tar -czf "dist/mutate_linux_$target.tar.gz" -C .release-bin mutate
             fi
