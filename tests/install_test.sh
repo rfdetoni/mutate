@@ -193,12 +193,14 @@ esac
 EOF
 cat > "$TMP/fixtures/bin/cc" <<'EOF'
 #!/bin/sh
-# A present .pc file alone does not guarantee compilable Gio headers.
-[ -f "$MOCK_FIXTURES/gui-installed" ] || exit 1
-if [ "${MOCK_GUI_BROKEN_HEADERS:-0}" = 1 ]; then
-  echo "fatal error: glib-object.h: No such file or directory" >&2
-  exit 1
-fi
+# The Vulkan header probe must fail even when EGL/GLES/X11 .pc modules exist.
+case "$(cat)" in
+    *"vulkan/vulkan.h"*)
+        [ -f "$MOCK_FIXTURES/vulkan-installed" ] || {
+            echo "fatal error: vulkan/vulkan.h: No such file or directory" >&2
+            exit 1
+        } ;;
+esac
 EOF
 cat > "$TMP/fixtures/bin/apt-cache" <<'EOF'
 #!/bin/sh
@@ -213,7 +215,11 @@ cat > "$TMP/fixtures/bin/apt-get" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >> "$MOCK_FIXTURES/gui-apt.log"
 case "$1" in
-  install) touch "$MOCK_FIXTURES/gui-installed" ;;
+  install)
+    touch "$MOCK_FIXTURES/gui-installed"
+    case " $* " in
+      *" libvulkan-dev "*) touch "$MOCK_FIXTURES/vulkan-installed" ;;
+    esac ;;
   update) : ;;
   *) exit 1 ;;
 esac
@@ -247,6 +253,21 @@ rm -f "$TMP/fixtures/gui-apt.log"
 sh "$ROOT/install.sh" --source > "$TMP/gui-present.log" 2>&1 ||
   { cat "$TMP/gui-present.log"; die "GUI dependencies already present"; }
 [ ! -e "$TMP/fixtures/gui-apt.log" ] || die "reinstalled Gio dependencies unnecessarily"
+
+# Regression: Gio requires vulkan/vulkan.h even when the EGL/X11 probes pass.
+# Install only the missing header package; do not reinstall the full GUI stack.
+rm -f "$TMP/fixtures/vulkan-installed" "$TMP/fixtures/gui-apt.log" "$MUTATE_INSTALL_DIR/mutate-gio"
+sh "$ROOT/install.sh" --source > "$TMP/gui-vulkan.log" 2>&1 ||
+  { cat "$TMP/gui-vulkan.log"; die "Gio missing Vulkan development headers"; }
+grep -qx 'install -y --no-install-recommends libvulkan-dev' "$TMP/fixtures/gui-apt.log" ||
+  die "Gio did not install only the missing Vulkan package"
+[ -x "$MUTATE_INSTALL_DIR/mutate-gio" ] ||
+  die "Gio did not build after installing Vulkan headers"
+rm -f "$TMP/fixtures/gui-apt.log"
+sh "$ROOT/install.sh" --source > "$TMP/gui-vulkan-present.log" 2>&1 ||
+  { cat "$TMP/gui-vulkan-present.log"; die "Vulkan headers already installed"; }
+[ ! -e "$TMP/fixtures/gui-apt.log" ] ||
+  die "Gio reinstalled Vulkan headers unnecessarily"
 
 # An X11-only machine must build Gio without installing the Wayland stack.
 MOCK_GUI_NO_WAYLAND=1
