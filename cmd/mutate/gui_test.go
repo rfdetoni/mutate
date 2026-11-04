@@ -371,7 +371,7 @@ func TestNativeGUIFromCLIRequiresExecutableSibling(t *testing.T) {
 	if _, err := nativeGUIFromCLI(cli); err == nil {
 		t.Fatal("accepted missing native shell")
 	}
-	native := filepath.Join(directory, "mutate-gui")
+	native := filepath.Join(directory, "mutate-gio")
 	if err := os.WriteFile(native, []byte("native"), 0644); err != nil {
 		t.Fatal(err)
 	}

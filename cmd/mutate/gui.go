@@ -35,7 +35,7 @@ func newGUICmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gui",
 		Short: "Open the integrated package installer and converter interface",
-		Long:  "Open the M.U.T.A.T.E. graphical interface in the native Wails window. Use --browser to explicitly open a browser.",
+		Long:  "Open the M.U.T.A.T.E. graphical interface in the native Gio window (no WebView). Use --browser to explicitly open a browser.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if port < 0 || port > 65535 {
@@ -54,11 +54,11 @@ func newGUICmd() *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout(), "Atalho M.U.T.A.T.E. instalado no menu de aplicativos.")
 				return nil
 			}
-			// Missing Wails must never silently launch Chrome. Validate the
+			// Missing Gio must never silently launch Chrome. Validate the
 			// native window before allocating a session or binding a port.
 			if !noBrowser && !browser {
 				if _, err := nativeGUIExecutable(); err != nil {
-					return fmt.Errorf("janela nativa Wails indisponível: %w. Reinstale o Mutate para instalar mutate-gui; para usar um navegador, execute 'mutate gui --browser'", err)
+					return fmt.Errorf("janela nativa Gio indisponível: %w. Reinstale o Mutate para instalar mutate-gio; para usar um navegador, execute 'mutate gui --browser'", err)
 				}
 			}
 			app, err := newGUIApp()
@@ -97,7 +97,7 @@ func newGUICmd() *cobra.Command {
 				} else {
 					native, err := startNativeGUI(url)
 					if err != nil {
-						return fmt.Errorf("falha ao iniciar a janela nativa Wails: %w. Use 'mutate gui --browser' apenas se desejar abrir no navegador", err)
+						return fmt.Errorf("falha ao iniciar a janela nativa Gio: %w. Use 'mutate gui --browser' apenas se desejar abrir no navegador", err)
 					}
 					defer func() {
 						if native.Process != nil {
@@ -106,7 +106,7 @@ func newGUICmd() *cobra.Command {
 					}()
 					go func() {
 						if err := native.Wait(); err != nil {
-							fmt.Fprintf(cmd.ErrOrStderr(), "Janela Wails encerrada com erro: %v\n", err)
+							fmt.Fprintf(cmd.ErrOrStderr(), "Janela Gio encerrada com erro: %v\n", err)
 						}
 						app.shutdown()
 					}()
@@ -121,7 +121,7 @@ func newGUICmd() *cobra.Command {
 	}
 	cmd.Flags().IntVar(&port, "port", 0, "Local loopback port (0 picks an available port)")
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Start the GUI service without opening a window")
-	cmd.Flags().BoolVar(&browser, "browser", false, "Explicitly open the interface in a web browser instead of Wails")
+	cmd.Flags().BoolVar(&browser, "browser", false, "Explicitly open the interface in a web browser instead of Gio")
 	cmd.Flags().StringVar(&exportIcon, "export-icon", "", "Export bundled PNG application icon to a file")
 	cmd.Flags().BoolVar(&register, "register", false, "Register M.U.T.A.T.E. in the current user's Linux application menu")
 	return cmd
@@ -243,13 +243,13 @@ func nativeGUIExecutable() (string, error) {
 }
 
 func nativeGUIFromCLI(executable string) (string, error) {
-	native := filepath.Join(filepath.Dir(executable), "mutate-gui")
+	native := filepath.Join(filepath.Dir(executable), "mutate-gio")
 	info, err := os.Stat(native)
 	if err != nil {
-		return "", fmt.Errorf("mutate-gui não encontrado ao lado de %s: %w", executable, err)
+		return "", fmt.Errorf("mutate-gio não encontrado ao lado de %s: %w", executable, err)
 	}
 	if !info.Mode().IsRegular() || info.Mode()&0111 == 0 {
-		return "", fmt.Errorf("mutate-gui não é um executável regular: %s", native)
+		return "", fmt.Errorf("mutate-gio não é um executável regular: %s", native)
 	}
 	return native, nil
 }

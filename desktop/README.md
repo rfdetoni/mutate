@@ -1,34 +1,40 @@
-# Native Wails desktop shell
+# Mutate desktop (Gio UI)
 
-This optional **Wails v3** application opens the existing local authenticated
-M.U.T.A.T.E. GUI in a GTK/WebKit window, with no Chrome/Chromium dependency.
-The CLI is still built separately with `CGO_ENABLED=0` and owns all package
-operations. Desktop exits when its window closes.
+The graphical application is rendered with **Gio UI** directly through the Linux GPU
+(EGL/GLES and X11 or Wayland). No Chromium, WebKit, GTK widget toolkit,
+HTML, CSS or JavaScript is used by the native window.
+
+The CGO-free `mutate` CLI owns conversion, inspection, trusted catalog
+operations, repositories and local session state. The native `mutate-gio`
+window connects only to the private, token-authenticated 127.0.0.1 service
+created by `mutate gui`. Browser mode is separately available only with
+`mutate gui --browser`.
+
+## Build on Ubuntu / Debian
 
 ```sh
-# Debian/Ubuntu 24.04+:
-sudo apt install build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
-
+sudo apt install gcc pkg-config libwayland-dev libx11-dev libx11-xcb-dev \
+  libxkbcommon-x11-dev libgles2-mesa-dev libegl1-mesa-dev libffi-dev \
+  libxcursor-dev libvulkan-dev
 cd desktop
-CGO_ENABLED=1 go build -o ../mutate-gui .
+go mod tidy
+CGO_ENABLED=1 go build -o ../mutate-gio .
 ```
 
-Tagged GitHub releases bundle a precompiled GTK3 `mutate-gui` alongside
-`mutate` for Linux amd64. These releases do not need Go, pkg-config or
-development headers on the destination; GTK3 and WebKit2GTK 4.1 runtime
-libraries are still required. Other architectures currently use the source
-build fallback for the native shell.
+For X11-only systems, `-tags=nowayland` is supported; for Wayland-only
+systems, `-tags=nox11`. The installer detects which is available.
+The desktop and CLI binaries must be installed in the **same directory**.
+On Linux amd64, tagged GitHub releases package both binaries and SHA-256 checksums;
+without a release, the installer builds them from source.
 
-Install the compiled `mutate-gui` next to the `mutate` CLI binary. Then
-`mutate gui` detects it and launches a native window. The main installer automatically detects and installs missing GUI build
-libraries via APT, DNF, pacman or zypper when building from source. It
-requests sudo access if necessary and never modifies system package
-configuration files or performs Arch partial upgrades. When dependencies
-cannot be installed (unsupported distro, no admin privileges or headless
-session), it leaves the CLI functional and uses the existing browser fallback
-with a warning. Disable automatic dependency installation with
-`--no-gui-deps` or `MUTATE_INSTALL_GUI_DEPS=0`.
+## Native UX
 
-Ubuntu 22.04 / Debian 12 legacy systems may use WebKit2GTK 4.1 + GTK3 and
-`-tags gtk3` while Wails v3.0.x supports that compatibility build.
-Do not set `CGO_ENABLED=0` for the native shell.
+The UI keeps the approved compact three-column layout and violet palette.
+Seven sections: Converter, Biblioteca, Repositórios, Inspecionar, Instalar,
+Histórico, Configurações. Native file chooser and save dialog use XDG Portals,
+with an explicit file-path fallback; actions are asynchronous and show real
+operation status and errors. Installation always requires confirmation.
+Only content panes scroll; no scroll containers are added without need.
+
+The legacy browser assets remain embedded in the CLI strictly as an
+**opt-in** compatibility interface.
