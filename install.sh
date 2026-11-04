@@ -216,10 +216,32 @@ native_gui_headers() {
 #include <webkit2/webkit2.h>' ;;
         *) return 1 ;;
     esac
-    flags=$(pkg-config --cflags "$@") || return 1
+    # Request GLib and Pango explicitly: older/misconfigured .pc dependency
+    # chains sometimes omit their include directories from GTK's cflags.
+    flags=$(pkg-config --cflags "$@" glib-2.0 gobject-2.0 pango 2>"$WORK/native-gui-probe.log") || return 1
     # pkg-config produces compiler argv flags; split them, never eval them.
     # shellcheck disable=SC2086
-    printf '%s\n' "$includes" | cc $flags -x c -fsyntax-only - >/dev/null 2>&1
+    printf '%s\n' "$includes" | cc $flags -x c -fsyntax-only - >/dev/null 2>"$WORK/native-gui-probe.log"
+}
+
+# Show the actual failing compiler stderr rather than masking it behind a
+# generic "pkg-config cannot find a stack" warning.
+diagnose_native_gui_deps() {
+    warn "GTK/WebKit header compilation failed; compiler diagnostic:"
+    if [ -s "$WORK/native-gui-probe.log" ]; then
+        sed -n '1,20p' "$WORK/native-gui-probe.log" >&2
+    else
+        warn "no compiler details captured; inspect pkg-config metadata and the C compiler"
+    fi
+    if command -v pkg-config >/dev/null 2>&1; then
+        for stack in gtk4 webkitgtk-6.0 gtk+-3.0 webkit2gtk-4.1 glib-2.0 pango; do
+            if ! pkg-config --exists "$stack" 2>/dev/null; then
+                warn "pkg-config module unavailable: $stack"
+            fi
+        done
+    fi
+    warn "Check: pkg-config --cflags gtk+-3.0 webkit2gtk-4.1 glib-2.0 pango"
+    warn "Check custom PKG_CONFIG_PATH, PKG_CONFIG_LIBDIR, PKG_CONFIG_SYSROOT_DIR or CC settings."
 }
 
 native_gui_variant() {
@@ -288,20 +310,13 @@ apt_gui_packages() {
     fi
     case "$gui_stack" in
         gtk4)
-            GUI_PACKAGES="build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev libglib2.0-dev libpango1.0-dev"
-            GUI_REPAIR_PACKAGES="libgtk-4-dev libwebkitgtk-6.0-dev libglib2.0-dev libpango1.0-dev" ;;
+            GUI_PACKAGES="build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev libglib2.0-dev libpango1.0-dev" ;;
         gtk3)
-            GUI_PACKAGES="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libglib2.0-dev libpango1.0-dev"
-            GUI_REPAIR_PACKAGES="libgtk-3-dev libwebkit2gtk-4.1-dev libglib2.0-dev libpango1.0-dev" ;;
+            GUI_PACKAGES="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libglib2.0-dev libpango1.0-dev" ;;
     esac
     # Shell splitting is intentional: these package lists contain only literals.
     # shellcheck disable=SC2086
-    gui_root apt-get install -y --no-install-recommends $GUI_PACKAGES || return 1
-    if ! have_native_gui_deps; then
-        say "GTK/WebKit metadata is present but development headers are incomplete; repairing packages..."
-        # shellcheck disable=SC2086
-        gui_root apt-get install -y --reinstall --no-install-recommends $GUI_REPAIR_PACKAGES || return 1
-    fi
+    gui_root apt-get install -y --no-install-recommends $GUI_PACKAGES
 }
 
 install_gui_build_deps() {
@@ -330,7 +345,8 @@ install_gui_build_deps() {
         return 1
     fi
     if ! have_native_gui_deps; then
-        warn "GTK/WebKit packages were installed, but pkg-config still cannot find a compatible GUI stack"
+        diagnose_native_gui_deps
+        warn "Native GTK/WebKit compiler check failed after installing dependencies"
         return 1
     fi
     return 0
@@ -340,6 +356,17 @@ build_desktop_shell() {
     [ -f "$SRC/desktop/go.mod" ] || return 0
     [ "$ARCH" != unknown ] || return 0
     if ! have_native_gui_deps; then
+        # Installed GTK/WebKit .pc files and an unsuccessful compiler probe
+        # indicate a broken compiler/include environment, not necessarily
+        # absent APT packages. Reinstalling the same packages repeatedly
+        # cannot repair custom compiler or pkg-config environment settings.
+        if command -v pkg-config >/dev/null 2>&1 &&
+           { pkg-config --exists gtk4 webkitgtk-6.0 2>/dev/null ||
+             pkg-config --exists gtk+-3.0 webkit2gtk-4.1 2>/dev/null; }; then
+            diagnose_native_gui_deps
+            warn "GTK/WebKit pkg-config metadata exists, but C compilation fails; skipping redundant package reinstall"
+            return 0
+        fi
         if ! install_gui_build_deps; then
             warn "native GUI build dependencies unavailable; CLI remains available, but browser mode requires 'mutate gui --browser'"
             return 0
@@ -351,10 +378,16 @@ build_desktop_shell() {
     }
     gui_tags=
     [ "$gui_variant" != gtk3 ] || gui_tags="-tags=gtk3"
+    # The explicit GLib/Pango flags are also passed to CGO, not only the
+    # preflight check, so the actual Wails build uses the same header paths.
+    gui_cflags=$(pkg-config --cflags glib-2.0 gobject-2.0 pango) || {
+        diagnose_native_gui_deps
+        return 0
+    }
     say "Building native Wails desktop window..."
     if (cd "$SRC/desktop" && unset GOROOT GOTOOLDIR &&
         GOTOOLCHAIN=local "$GO_BIN" mod tidy &&
-        CGO_ENABLED=1 GOOS=linux GOTOOLCHAIN=local "$GO_BIN" build ${gui_tags:+"$gui_tags"} -trimpath -ldflags="-s -w" -o "$WORK/mutate-gui" .); then
+        CGO_ENABLED=1 CGO_CFLAGS="${CGO_CFLAGS:+$CGO_CFLAGS }$gui_cflags" GOOS=linux GOTOOLCHAIN=local "$GO_BIN" build ${gui_tags:+"$gui_tags"} -trimpath -ldflags="-s -w" -o "$WORK/mutate-gui" .); then
         [ -s "$WORK/mutate-gui" ] && GUI_BINARY="$WORK/mutate-gui"
     else
         warn "native Wails build failed; CLI remains available, browser mode requires 'mutate gui --browser'"

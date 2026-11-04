@@ -187,6 +187,7 @@ case "$1" in --exists|--cflags) ;; *) exit 1 ;; esac
 case "$*" in
   *"gtk4 webkitgtk-6.0"*) [ "${MOCK_GUI_LEGACY:-0}" = 0 ] ;;
   *"gtk+-3.0 webkit2gtk-4.1"*) [ "${MOCK_GUI_LEGACY:-0}" = 1 ] ;;
+  *"glib-2.0"*|*"gobject-2.0"*|*"pango"*) : ;;
   *) exit 1 ;;
 esac || exit 1
 [ "$1" != --cflags ] || printf '%s\n' '-I/mock/include'
@@ -196,7 +197,8 @@ cat > "$TMP/fixtures/bin/cc" <<'EOF'
 # A present .pc file alone does not guarantee compilable GTK headers.
 [ -f "$MOCK_FIXTURES/gui-installed" ] || exit 1
 if [ "${MOCK_GUI_BROKEN_HEADERS:-0}" = 1 ]; then
-  [ -f "$MOCK_FIXTURES/gui-repaired" ] || exit 1
+  echo "fatal error: glib-object.h: No such file or directory" >&2
+  exit 1
 fi
 EOF
 cat > "$TMP/fixtures/bin/apt-cache" <<'EOF'
@@ -212,11 +214,7 @@ cat > "$TMP/fixtures/bin/apt-get" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >> "$MOCK_FIXTURES/gui-apt.log"
 case "$1" in
-  install)
-    touch "$MOCK_FIXTURES/gui-installed"
-    case " $* " in
-      *" --reinstall "*) touch "$MOCK_FIXTURES/gui-repaired" ;;
-    esac ;;
+  install) touch "$MOCK_FIXTURES/gui-installed" ;;
   update) : ;;
   *) exit 1 ;;
 esac
@@ -251,16 +249,20 @@ sh "$ROOT/install.sh" --source > "$TMP/gui-present.log" 2>&1 ||
   { cat "$TMP/gui-present.log"; die "GUI dependencies already present"; }
 [ ! -e "$TMP/fixtures/gui-apt.log" ] || die "reinstalled GTK dependencies unnecessarily"
 
-# Reproduce partially installed GLib/Pango headers with valid pkg-config metadata.
+# Regression: a valid GTK pkg-config stack with a broken compiler must not
+# re-install already present APT packages or conceal compiler diagnostics.
 MOCK_GUI_BROKEN_HEADERS=1
 export MOCK_GUI_BROKEN_HEADERS
-rm -f "$TMP/fixtures/gui-repaired" "$TMP/fixtures/gui-apt.log"
-sh "$ROOT/install.sh" --source > "$TMP/gui-header-repair.log" 2>&1 ||
-  { cat "$TMP/gui-header-repair.log"; die "incomplete native GUI headers" ; }
-grep -q 'install -y --reinstall --no-install-recommends' "$TMP/fixtures/gui-apt.log" ||
-  die "incomplete development headers were not repaired"
-grep -q 'development headers are incomplete' "$TMP/gui-header-repair.log" ||
-  die "missing header repair explanation"
+rm -f "$TMP/fixtures/gui-apt.log" "$MUTATE_INSTALL_DIR/mutate-gui"
+sh "$ROOT/install.sh" --source > "$TMP/gui-header-fail.log" 2>&1 ||
+  { cat "$TMP/gui-header-fail.log"; die "broken native GUI compiler probe" ; }
+[ ! -e "$TMP/fixtures/gui-apt.log" ] ||
+  die "reinstalled existing GTK development packages despite compiler failure"
+[ ! -e "$MUTATE_INSTALL_DIR/mutate-gui" ] || die "broken native GUI built unexpectedly"
+grep -q 'fatal error: glib-object.h' "$TMP/gui-header-fail.log" ||
+  die "compiler diagnostics were swallowed"
+grep -q 'skipping redundant package reinstall' "$TMP/gui-header-fail.log" ||
+  die "did not explain why APT was skipped"
 MOCK_GUI_BROKEN_HEADERS=0
 export MOCK_GUI_BROKEN_HEADERS
 
