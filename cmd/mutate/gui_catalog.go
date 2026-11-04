@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os/exec"
@@ -14,23 +15,51 @@ import (
 
 func (a *guiApp) handleCatalogSearch(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
-	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
-	defer cancel()
-	result, err := a.repositories.Search(ctx, resolver.DetectHostDistro(), query)
-	if err != nil {
-		if _, e := catalog.NormalizeQuery(query); e != nil {
-			guiError(w, 400, e.Error())
-			return
-		}
-		guiError(w, 502, "Falha na consulta dos repositórios: "+err.Error())
+	if _, err := catalog.NormalizeQuery(query); err != nil {
+		guiError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	ctx, cancel := context.WithTimeout(r.Context(), 16*time.Second)
+	defer cancel()
+	type fpResult struct { apps []catalog.App; err error }
+	flatpakCh := make(chan fpResult, 1)
+	go func() {
+		if _, err := exec.LookPath("flatpak"); err != nil {
+			flatpakCh <- fpResult{err: catalog.ErrFlathubUnavailable}
+			return
+		}
+		op, done := context.WithTimeout(ctx, 9*time.Second)
+		defer done()
+		apps, err := catalog.SearchFlatpak(op, query, nil)
+		flatpakCh <- fpResult{apps: apps, err: err}
+	}()
+	result, err := a.repositories.Search(ctx, resolver.DetectHostDistro(), query)
+	if err != nil {
+		guiError(w, http.StatusBadGateway, "Falha na consulta dos repositórios: "+err.Error())
+		return
+	}
+	fp := <-flatpakCh
+	if fp.err == nil {
+		count := 0
+		for count < len(result.Apps) && result.Apps[count].Native { count++ }
+		all := make([]catalog.App, 0, len(result.Apps)+len(fp.apps))
+		all = append(all, result.Apps[:count]...)
+		all = append(all, fp.apps...)
+		all = append(all, result.Apps[count:]...)
+		result.Apps = all
+	} else if !errors.Is(fp.err, catalog.ErrFlathubUnavailable) {
+		result.Warnings = append(result.Warnings, "Flathub: "+fp.err.Error())
+	}
+	if len(result.Apps) == 0 && errors.Is(fp.err, catalog.ErrFlathubUnavailable) {
+		result.Warnings = append(result.Warnings,
+			"Configure Flatpak e o Flathub oficial para alternativas instaláveis.")
+	}
 	a.mu.Lock()
-	// Only results in the most recent search can be installed, and only
-	// native packages obtained from the configured signed host repositories.
+	// The last search authorizes only signed host packages and trusted Flatpak IDs.
 	a.catalog = make(map[string]catalog.App, len(result.Apps))
 	for _, entry := range result.Apps {
-		if entry.Native && entry.Installable && catalog.ValidPackageName(entry.Name) {
+		_, flatpak := catalog.FlatpakApplicationID(entry)
+		if entry.Installable && ((entry.Native && catalog.ValidPackageName(entry.Name)) || flatpak) {
 			a.catalog[entry.ID] = entry
 		}
 	}
@@ -56,9 +85,10 @@ func (a *guiApp) handleCatalogInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entry, ok := a.catalog[req.ID]
-	if !ok || !entry.Native || !entry.Installable || !catalog.ValidPackageName(entry.Name) {
+	_, flatpak := catalog.FlatpakApplicationID(entry)
+	if !ok || !entry.Installable || !((entry.Native && catalog.ValidPackageName(entry.Name)) || flatpak) {
 		a.mu.Unlock()
-		guiError(w, 403, "O pacote não está disponível nos repositórios nativos desta sessão")
+		guiError(w, 403, "Pacote indisponível ou fonte não autorizada nesta sessão")
 		return
 	}
 	id, err := newSessionToken()
@@ -78,7 +108,14 @@ func (a *guiApp) handleCatalogInstall(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *guiApp) runCatalogInstall(entry catalog.App, id string) {
-	err := installNativeCatalogPackage(entry.Name, resolver.DetectHostDistro())
+	var err error
+	via := "repositório nativo"
+	if appID, ok := catalog.FlatpakApplicationID(entry); ok {
+		via = "Flathub/Flatpak"
+		err = installFlatpakCatalogPackage(appID)
+	} else {
+		err = installNativeCatalogPackage(entry.Name, resolver.DetectHostDistro())
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.job == nil || a.job.ID != id {
@@ -90,7 +127,7 @@ func (a *guiApp) runCatalogInstall(entry catalog.App, id string) {
 		a.job.Phase = "Não concluído"
 	} else {
 		a.job.State = "completed"
-		a.job.Message = "Instalado via repositório nativo: " + entry.Name
+		a.job.Message = "Instalado via " + via + ": " + entry.Name
 		a.job.Phase = "Instalado"
 	}
 	a.busy = false
@@ -101,6 +138,27 @@ func (a *guiApp) runCatalogInstall(entry catalog.App, id string) {
 	if len(a.history) > 20 {
 		a.history = a.history[:20]
 	}
+}
+
+// Flatpak downloads and verifies remote packages; no AUR/source scripts run.
+func installFlatpakCatalogPackage(appID string) error {
+	if !catalog.ValidFlatpakID(appID) { return fmt.Errorf("ID Flatpak inválido") }
+	if _, err := exec.LookPath("flatpak"); err != nil {
+		return fmt.Errorf("Flatpak indisponível: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	scope, err := catalog.FlathubScope(ctx, nil)
+	if err != nil { return err }
+	cmd := exec.CommandContext(ctx, "flatpak", "install", scope, "--assumeyes",
+		"--noninteractive", "--app", "flathub", appID)
+	var output cappedGUIBuffer
+	cmd.Stdout, cmd.Stderr = &output, &output
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil { return fmt.Errorf("tempo limite da instalação Flatpak excedido") }
+		return fmt.Errorf("instalação do Flathub: %s: %w", output.String(), err)
+	}
+	return nil
 }
 
 func installNativeCatalogPackage(name string, host resolver.Distro) error {

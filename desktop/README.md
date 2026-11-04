@@ -59,3 +59,27 @@ continues to scroll independently when necessary.
 
 The legacy browser assets remain embedded in the CLI strictly as an
 **opt-in** compatibility interface.
+
+
+## Installing from other distributions
+
+The Library searches native signed host repositories and also offers an
+installable Flatpak/Flathub fallback when `flatpak` and the official
+Flathub remote are already configured. Flatpak handles downloading and
+verifying its own application packages. It does not require conversion to a
+host DEB/RPM/APK package.
+
+On Ubuntu/Debian, Flatpak may be configured using the official instructions:
+
+```sh
+sudo apt install flatpak
+flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+```
+
+The app must be available in the configured Flathub repository and the user
+must confirm installation. Remote AUR/Arch/Debian source catalog listings are
+metadata-only: package scripts and unsigned archives are **not** downloaded
+and executed automatically. The existing Converter flow can process supported
+package files selected by the user, but universal verified cross-distribution
+download, dependency compatibility and package-signature translation are not
+yet implemented.

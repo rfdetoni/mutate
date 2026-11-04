@@ -170,6 +170,7 @@ func runWindow(api *client) error {
 	u.th.Palette.ContrastFg = white
 	u.path.SingleLine = true
 	u.searchQuery.SingleLine = true
+	u.searchQuery.Submit = true
 	u.repoName.SingleLine = true
 	u.repoURL.SingleLine = true
 	u.dependencyMap.SingleLine = false
@@ -261,7 +262,7 @@ func (u *screen) refreshRepos() {
 		if err := u.api.get(u.ctx, "repositories", &data); err != nil {
 			return nil, err
 		}
-		return func(u *screen) { u.sources = data.Sources }, nil
+		return func(u *screen) { u.sources = data.Sources; u.message = "" }, nil
 	})
 }
 func (u *screen) doAction(action string) {
@@ -358,6 +359,10 @@ func (u *screen) catalogSearch() {
 		u.problem = "Digite pelo menos dois caracteres para pesquisar"
 		return
 	}
+	if u.waiting { return }
+	u.apps = nil
+	u.warnings = nil
+	u.bodyList.Position = layout.Position{}
 	u.runTask("Pesquisando repositórios", func() (func(*screen), error) {
 		var result struct {
 			Apps     []catalogApp `json:"apps"`
@@ -369,6 +374,7 @@ func (u *screen) catalogSearch() {
 		return func(u *screen) {
 			u.apps = result.Apps
 			u.warnings = result.Warnings
+			u.message = ""
 			u.bodyList.Position = layout.Position{}
 		}, nil
 	})
@@ -643,6 +649,7 @@ func (u *screen) mainPanel(gtx layout.Context) layout.Dimensions {
 			return layout.Dimensions{}
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			if u.view == 1 { return layout.Dimensions{} }
 			if u.problem != "" {
 				return u.note(gtx, "Erro: "+u.problem, negative)
 			}
@@ -828,6 +835,12 @@ func (u *screen) inspector(gtx layout.Context) layout.Dimensions {
 // The library is a full-width workspace: search and result rows use the same
 // available column width, with native actions aligned to the far right.
 func (u *screen) librarySearchField(gtx layout.Context) layout.Dimensions {
+	// Consume Enter/SubmitEvent before material.Editor.Layout drains events.
+	for {
+		event, ok := u.searchQuery.Update(gtx)
+		if !ok { break }
+		if _, submit := event.(widget.SubmitEvent); submit { u.catalogSearch() }
+	}
 	return widget.Border{Color: line, CornerRadius: unit.Dp(8), Width: unit.Dp(1)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return surface(gtx, panelSurface, 8, func(gtx layout.Context) layout.Dimensions {
 			return layout.UniformInset(unit.Dp(10)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
@@ -886,7 +899,7 @@ func (u *screen) libraryResultCard(gtx layout.Context, item catalogApp) layout.D
 			)
 		}
 		action := func(gtx layout.Context) layout.Dimensions {
-			if !item.Native || !item.Installable {
+			if !item.Installable {
 				return layout.Dimensions{}
 			}
 			btn := u.cachedButton(u.catalogButtons, item.ID)
@@ -900,7 +913,7 @@ func (u *screen) libraryResultCard(gtx layout.Context, item catalogApp) layout.D
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 				layout.Rigid(info),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					if !item.Native || !item.Installable {
+					if !item.Installable {
 						return layout.Dimensions{}
 					}
 					return layout.Inset{Top: unit.Dp(12)}.Layout(gtx, action)
@@ -910,7 +923,7 @@ func (u *screen) libraryResultCard(gtx layout.Context, item catalogApp) layout.D
 		return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
 			layout.Flexed(1, info),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				if !item.Native || !item.Installable {
+				if !item.Installable {
 					return layout.Dimensions{}
 				}
 				return layout.Inset{Left: unit.Dp(24)}.Layout(gtx, action)
@@ -931,6 +944,11 @@ func (u *screen) libraryPanel(gtx layout.Context) layout.Dimensions {
 		layout.Rigid(u.librarySearchBar),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions { return gap(gtx, unit.Dp(18)) }),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			if u.problem != "" { return u.note(gtx, "Erro na busca: "+u.problem, negative) }
+			if u.waiting { return u.label(gtx, "Pesquisando repositórios…", unit.Sp(13), violet) }
+			if len(u.apps) == 0 {
+				return u.label(gtx, "Nenhum aplicativo encontrado. Experimente outro termo ou configure o Flathub.", unit.Sp(12), softInk)
+			}
 			return u.label(gtx, fmt.Sprintf("%d resultados", len(u.apps)), unit.Sp(12), softInk)
 		}),
 	}
