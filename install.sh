@@ -198,21 +198,47 @@ bootstrap_go() {
     [ -x "$GO_BIN" ] || die "downloaded Go toolchain is not executable"
 }
 
-# Gio uses a native GPU window: no GTK, WebKit, Chrome or HTML runtime.
-# A .pc check for EGL/GLES/X11 does not imply Vulkan headers are installed.
+# Gio uses native GPU rendering: no GTK, WebKit, Chrome or HTML runtime.
+# Prefer the distro GCC: "gcc" in PATH may be a Zig wrapper (or another
+# cross-compiler) which fails on stdin even with system headers installed.
+# MUTATE_GUI_CC is an explicit executable-path override, mainly for custom
+# toolchains and offline installer tests.
+gio_compiler() {
+    if [ -n "${MUTATE_GUI_CC:-}" ]; then
+        [ -x "$MUTATE_GUI_CC" ] || {
+            warn "MUTATE_GUI_CC is not executable: $MUTATE_GUI_CC"
+            return 1
+        }
+        printf '%s\n' "$MUTATE_GUI_CC"
+    elif [ -x /usr/bin/gcc ]; then
+        printf '%s\n' /usr/bin/gcc
+    else
+        command -v gcc 2>/dev/null || return 1
+    fi
+}
+
+# A successful EGL/GLES/X11 probe does not imply Vulkan headers are usable.
 gio_vulkan_headers() {
-    command -v gcc >/dev/null 2>&1 || return 1
+    gio_cc=$(gio_compiler) || return 1
     vulkan_flags=$(pkg-config --cflags vulkan 2>/dev/null || :)
     # Pass pkg-config compiler arguments directly, never through eval.
-    # Keep stderr so a missing header or a broken compiler is diagnosable.
+    # Keep stderr so a broken compiler is diagnosable.
     # shellcheck disable=SC2086
-    printf '#include <vulkan/vulkan.h>\n' | gcc $vulkan_flags -x c -fsyntax-only - >/dev/null 2>"$WORK/gio-vulkan-probe.log"
+    printf '#include <vulkan/vulkan.h>\n' | "$gio_cc" $vulkan_flags -x c -fsyntax-only - >/dev/null 2>"$WORK/gio-vulkan-probe.log"
 }
 
 gio_diagnose_deps() {
     warn "Gio native graphics diagnostics:"
-    if ! command -v gcc >/dev/null 2>&1; then
-        warn "C compiler (gcc) is unavailable"
+    if gio_cc=$(gio_compiler); then
+        warn "Gio C compiler: $gio_cc"
+        if command -v gcc >/dev/null 2>&1; then
+            path_gcc=$(command -v gcc)
+            if [ "$path_gcc" != "$gio_cc" ]; then
+                warn "gcc on PATH ($path_gcc) differs from selected compiler"
+            fi
+        fi
+    else
+        warn "no usable GCC compiler found"
     fi
     if ! command -v pkg-config >/dev/null 2>&1; then
         warn "pkg-config is unavailable"
@@ -247,7 +273,7 @@ gio_apt_vulkan_installed() {
     [ "$(dpkg-query -W -f='${Status}' libvulkan-dev 2>/dev/null || :)" = "install ok installed" ]
 }
 gio_window_deps() {
-    command -v gcc >/dev/null 2>&1 || return 1
+    gio_compiler >/dev/null || return 1
     command -v pkg-config >/dev/null 2>&1 || return 1
     pkg-config --exists egl glesv2 2>/dev/null || return 1
     pkg-config --exists x11 xcursor xkbcommon-x11 2>/dev/null ||
@@ -350,10 +376,14 @@ build_desktop_shell() {
         nowayland) gui_tags="-tags=nowayland" ;;
         *) warn "unsupported Gio graphics mode"; return 0 ;;
     esac
-    say "Building native Gio desktop window (no GTK or WebView)..."
+    gio_build_cc=$(gio_compiler) || {
+        warn "cannot locate the C compiler for Gio"
+        return 0
+    }
+    say "Building native Gio desktop window with $gio_build_cc (no GTK or WebView)..."
     if (cd "$SRC/desktop" && unset GOROOT GOTOOLDIR &&
         GOTOOLCHAIN=local "$GO_BIN" mod tidy &&
-        CC=gcc CGO_ENABLED=1 GOOS=linux GOTOOLCHAIN=local "$GO_BIN" build ${gui_tags:+"$gui_tags"} -trimpath -ldflags="-s -w -X gioui.org/app.ID=mutate" -o "$WORK/mutate-gio" .); then
+        CC="$gio_build_cc" CGO_ENABLED=1 GOOS=linux GOTOOLCHAIN=local "$GO_BIN" build ${gui_tags:+"$gui_tags"} -trimpath -ldflags="-s -w -X gioui.org/app.ID=mutate" -o "$WORK/mutate-gio" .); then
         [ -s "$WORK/mutate-gio" ] && GUI_BINARY="$WORK/mutate-gio"
     else
         warn "native Gio build failed; CLI remains available. Browser requires explicit --browser."

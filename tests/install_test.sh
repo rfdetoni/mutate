@@ -200,7 +200,7 @@ cat > "$TMP/fixtures/bin/cc" <<'EOF'
 case "$(cat)" in
     *"vulkan/vulkan.h"*)
         if [ "${MOCK_GUI_BAD_COMPILER:-0}" = 1 ]; then
-            echo "fatal error: Vulkan header is inaccessible to cc" >&2
+            echo "$HOME/.cache/zig/tmp/test-stdin.c:1:1: error: FileNotFound" >&2
             exit 1
         fi
         [ -f "$MOCK_FIXTURES/vulkan-installed" ] || {
@@ -252,6 +252,9 @@ chmod 755 "$TMP/fixtures/bin/pkg-config" "$TMP/fixtures/bin/apt-cache" \
   "$TMP/fixtures/bin/apt-get" "$TMP/fixtures/bin/sudo" "$TMP/fixtures/bin/cc" \
   "$TMP/fixtures/bin/gcc" "$TMP/fixtures/bin/dpkg-query"
 
+# Test the same explicit compiler path in the Vulkan probe and in CGO.
+# On CI, /usr/bin/gcc also exists; override it to exercise the fake headers.
+export MUTATE_GUI_CC="$TMP/fixtures/bin/gcc"
 MOCK_GUI_LEGACY=0
 export MOCK_GUI_LEGACY
 MOCK_RELEASE_MISSING=1
@@ -261,7 +264,7 @@ sh "$ROOT/install.sh" --source > "$TMP/gui-auto.log" 2>&1 ||
   { cat "$TMP/gui-auto.log"; die "automatic Gio dependencies"; }
 [ "$("$MUTATE_INSTALL_DIR/mutate")" = source-binary ] || die "GUI install broke CLI"
 [ -x "$MUTATE_INSTALL_DIR/mutate-gio" ] || die "native Gio shell not installed"
-grep -qx 'gcc' "$TMP/fixtures/go-cgo-compiler.log" ||
+grep -Fqx "$MUTATE_GUI_CC" "$TMP/fixtures/go-cgo-compiler.log" ||
   die "Gio CGO build did not use the compiler tested by the Vulkan probe"
 grep -q 'install -y --no-install-recommends build-essential pkg-config libwayland-dev' \
   "$TMP/fixtures/gui-apt.log" || die "Gio graphics development packages not installed"
@@ -303,7 +306,7 @@ grep -q 'libvulkan-dev is already installed' "$TMP/gui-vulkan-compiler.log" ||
   die "Gio did not recognize the installed Vulkan package"
 grep -q 'Vulkan header compiler probe failed' "$TMP/gui-vulkan-compiler.log" ||
   die "Gio hid the failed Vulkan compiler check"
-grep -q 'fatal error: Vulkan header is inaccessible to cc' "$TMP/gui-vulkan-compiler.log" ||
+grep -q 'error: FileNotFound' "$TMP/gui-vulkan-compiler.log" ||
   die "Gio swallowed the compiler diagnostic"
 MOCK_GUI_BAD_COMPILER=0
 export MOCK_GUI_BAD_COMPILER
