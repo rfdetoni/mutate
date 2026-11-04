@@ -203,9 +203,51 @@ bootstrap_go() {
 gio_vulkan_headers() {
     command -v cc >/dev/null 2>&1 || return 1
     vulkan_flags=$(pkg-config --cflags vulkan 2>/dev/null || :)
-    # Flags are from pkg-config; intentionally pass each compiler argument.
+    # Pass pkg-config compiler arguments directly, never through eval.
+    # Keep stderr so a missing header or a broken compiler is diagnosable.
     # shellcheck disable=SC2086
-    printf '#include <vulkan/vulkan.h>\n' | cc $vulkan_flags -x c -fsyntax-only - >/dev/null 2>&1
+    printf '#include <vulkan/vulkan.h>\n' | cc $vulkan_flags -x c -fsyntax-only - >/dev/null 2>"$WORK/gio-vulkan-probe.log"
+}
+
+gio_diagnose_deps() {
+    warn "Gio native graphics diagnostics:"
+    if ! command -v gcc >/dev/null 2>&1; then
+        warn "C compiler (gcc) is unavailable"
+    fi
+    if ! command -v cc >/dev/null 2>&1; then
+        warn "C compiler (cc) is unavailable"
+    fi
+    if ! command -v pkg-config >/dev/null 2>&1; then
+        warn "pkg-config is unavailable"
+    else
+        for module in egl glesv2; do
+            if ! pkg-config --exists "$module" 2>/dev/null; then
+                warn "missing pkg-config module: $module"
+            fi
+        done
+        if ! pkg-config --exists x11 xcursor xkbcommon-x11 2>/dev/null &&
+           ! pkg-config --exists wayland-client 2>/dev/null; then
+            warn "neither complete X11 nor Wayland development headers are available"
+            for module in x11 xcursor xkbcommon-x11 wayland-client; do
+                if ! pkg-config --exists "$module" 2>/dev/null; then
+                    warn "missing pkg-config module: $module"
+                fi
+            done
+        fi
+    fi
+    if ! gio_vulkan_headers; then
+        warn "Vulkan header compiler probe failed: #include <vulkan/vulkan.h>"
+        if [ -s "$WORK/gio-vulkan-probe.log" ]; then
+            sed -n '1,20p' "$WORK/gio-vulkan-probe.log" >&2
+        else
+            warn "no compiler stderr was captured; check CC, pkg-config and compiler search paths"
+        fi
+    fi
+}
+
+gio_apt_vulkan_installed() {
+    command -v dpkg-query >/dev/null 2>&1 || return 1
+    [ "$(dpkg-query -W -f='${Status}' libvulkan-dev 2>/dev/null || :)" = "install ok installed" ]
 }
 gio_window_deps() {
     command -v gcc >/dev/null 2>&1 || return 1
@@ -255,6 +297,11 @@ install_gui_build_deps() {
     }
     if command -v apt-get >/dev/null 2>&1; then
         if gio_window_deps && ! gio_vulkan_headers; then
+            if gio_apt_vulkan_installed; then
+                warn "libvulkan-dev is already installed; not reinstalling packages that cannot fix the compiler error"
+                gio_diagnose_deps
+                return 1
+            fi
             say "Installing missing Vulkan development headers (libvulkan-dev)..."
             gui_root apt-get install -y --no-install-recommends libvulkan-dev || return 1
         else
@@ -281,6 +328,7 @@ install_gui_build_deps() {
         return 1
     fi
     gio_build_tags >/dev/null || {
+        gio_diagnose_deps
         warn "Gio graphics stack remains incomplete (EGL/GLES, X11/Wayland, or Vulkan headers)"
         return 1
     }
@@ -294,7 +342,10 @@ build_desktop_shell() {
             warn "Gio desktop dependencies unavailable; CLI works, browser requires 'mutate gui --browser'."
             return 0
         fi
-        gui_tags=$(gio_build_tags) || return 0
+        gui_tags=$(gio_build_tags) || {
+            gio_diagnose_deps
+            return 0
+        }
     fi
     case "$gui_tags" in
         default) gui_tags= ;;
